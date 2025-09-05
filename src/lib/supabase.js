@@ -170,5 +170,81 @@ export const db = {
     
     if (error) throw error
     return data
+  },
+
+  // Paintings
+  async getPaintings() {
+    const { data, error } = await supabase
+      .from('paintings')
+      .select('*')
+      .order('created_at', { ascending: false })
+    
+    if (error) throw error
+    return data || []
+  },
+
+  async getPainting(id) {
+    const { data, error } = await supabase
+      .from('paintings')
+      .select('*')
+      .eq('id', id)
+      .single()
+    
+    if (error) throw error
+    return data
+  },
+
+  // Bids
+  async getBids(paintingId) {
+    const { data, error } = await supabase
+      .from('bids')
+      .select('*')
+      .eq('painting_id', paintingId)
+      .order('bid_amount', { ascending: false })
+    
+    if (error) throw error
+    return data || []
+  },
+
+  async getHighestBid(paintingId) {
+    const { data, error } = await supabase
+      .from('bids')
+      .select('*')
+      .eq('painting_id', paintingId)
+      .order('bid_amount', { ascending: false })
+      .limit(1)
+      .single()
+    
+    if (error) {
+      if (error.code === 'PGRST116') {
+        // No rows returned - no bids yet
+        return null
+      }
+      throw error
+    }
+    return data
+  },
+
+  async createBid(bidData) {
+    const { data, error } = await supabase
+      .from('bids')
+      .insert(bidData)
+      .select()
+      .single()
+    
+    if (error) throw error
+    return data
+  },
+
+  async getBidHistory(paintingId, limit = 10) {
+    const { data, error } = await supabase
+      .from('bids')
+      .select('*')
+      .eq('painting_id', paintingId)
+      .order('created_at', { ascending: false })
+      .limit(limit)
+    
+    if (error) throw error
+    return data || []
   }
 }

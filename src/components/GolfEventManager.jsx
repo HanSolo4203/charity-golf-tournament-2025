@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Clock, MapPin, Trophy, Users, Coffee, Camera, Download, Edit, Plus, X, Eye, EyeOff, Trash2, Gift, Settings, Lock, Unlock, Save } from 'lucide-react';
-import { db } from '../lib/supabase';
+import { Clock, MapPin, Trophy, Users, Coffee, Camera, Download, Edit, Plus, X, Eye, EyeOff, Trash2, Gift, Settings, Lock, Unlock, Save, Gavel } from 'lucide-react';
+import { db, supabase } from '../lib/supabase';
 
-const GolfEventManager = () => {
+const GolfEventManager = ({ onNavigateToAuction }) => {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [nextEventIndex, setNextEventIndex] = useState(0);
   const [isAdminMode, setIsAdminMode] = useState(false);
@@ -21,8 +21,119 @@ const GolfEventManager = () => {
   const [organizationSettings, setOrganizationSettings] = useState({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  
+  // Auction manager state
+  const [activeTab, setActiveTab] = useState('events'); // 'events', 'raffle', 'auction'
+  const [auctionBids, setAuctionBids] = useState([]);
+  const [highestBid, setHighestBid] = useState(null);
+  const [totalBidders, setTotalBidders] = useState(0);
+  const [loadingAuction, setLoadingAuction] = useState(false);
+  
+  // Painting editing state
+  const [painting, setPainting] = useState(null);
+  const [showPaintingModal, setShowPaintingModal] = useState(false);
+  const [editingPainting, setEditingPainting] = useState(null);
 
   // Remove hardcoded password - now using database authentication
+
+  // Load auction data
+  const loadAuctionData = async () => {
+    try {
+      setLoadingAuction(true);
+      
+      // Get painting information
+      const paintingData = await db.getPainting(1);
+      setPainting(paintingData);
+      
+      // Get all bids for the painting (painting ID 1)
+      const bids = await db.getBids(1);
+      setAuctionBids(bids);
+      
+      // Get highest bid
+      const highest = await db.getHighestBid(1);
+      setHighestBid(highest);
+      
+      // Count unique bidders
+      const uniqueBidders = new Set(bids.map(bid => bid.bidder_name));
+      setTotalBidders(uniqueBidders.size);
+      
+    } catch (err) {
+      console.error('Error loading auction data:', err);
+      setError('Failed to load auction data');
+    } finally {
+      setLoadingAuction(false);
+    }
+  };
+
+  // Setup real-time subscription for auction updates
+  const setupAuctionRealtime = () => {
+    const channel = supabase
+      .channel('auction_admin_updates')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'bids',
+          filter: 'painting_id=eq.1'
+        },
+        () => {
+          // Reload auction data when new bid is added
+          loadAuctionData();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  };
+
+  // Painting editing functions
+  const openPaintingModal = (paintingData = null) => {
+    setEditingPainting(paintingData || painting);
+    setShowPaintingModal(true);
+  };
+
+  const savePainting = async () => {
+    try {
+      if (!editingPainting) return;
+
+      const { data, error } = await supabase
+        .from('paintings')
+        .update({
+          title: editingPainting.title,
+          artist: editingPainting.artist,
+          year: editingPainting.year,
+          medium: editingPainting.medium,
+          dimensions: editingPainting.dimensions,
+          description: editingPainting.description,
+          image_url: editingPainting.image_url,
+          starting_bid: editingPainting.starting_bid,
+          estimated_value: editingPainting.estimated_value,
+          condition: editingPainting.condition,
+          provenance: editingPainting.provenance,
+          auction_end: editingPainting.auction_end,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', editingPainting.id)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setPainting(data);
+      setShowPaintingModal(false);
+      setEditingPainting(null);
+      
+      // Reload auction data to reflect changes
+      loadAuctionData();
+      
+    } catch (err) {
+      console.error('Error saving painting:', err);
+      setError('Failed to save painting changes');
+    }
+  };
 
   const [events, setEvents] = useState([
     {
@@ -191,6 +302,15 @@ const GolfEventManager = () => {
     
     return () => clearInterval(timer);
   }, [events]);
+
+  // Load auction data when auction tab is active
+  useEffect(() => {
+    if (activeTab === 'auction') {
+      loadAuctionData();
+      const cleanup = setupAuctionRealtime();
+      return cleanup;
+    }
+  }, [activeTab]);
 
   const handleAdminLogin = async () => {
     try {
@@ -536,28 +656,39 @@ const GolfEventManager = () => {
     <div className="min-h-screen bg-slate-50">
       {/* Admin Toggle */}
       <div className="fixed top-4 right-4 z-50">
-        {!isAdminMode ? (
-          <button
-            onClick={() => setShowPasswordModal(true)}
-            className="flex items-center gap-2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg hover:bg-slate-700 transition-colors"
-          >
-            <Settings className="w-4 h-4" />
-            Admin
-          </button>
-        ) : (
-          <div className="flex gap-2">
-            <div className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg">
-              <Unlock className="w-4 h-4" />
-              Admin Mode
-            </div>
+        <div className="flex gap-2">
+          {onNavigateToAuction && (
             <button
-              onClick={handleAdminLogout}
-              className="bg-red-600 text-white px-3 py-2 rounded-lg shadow-lg hover:bg-red-700 transition-colors"
+              onClick={onNavigateToAuction}
+              className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg shadow-lg hover:bg-purple-700 transition-colors"
             >
-              <Lock className="w-4 h-4" />
+              <Gavel className="w-4 h-4" />
+              Live Auction
             </button>
-          </div>
-        )}
+          )}
+          {!isAdminMode ? (
+            <button
+              onClick={() => setShowPasswordModal(true)}
+              className="flex items-center gap-2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg hover:bg-slate-700 transition-colors"
+            >
+              <Settings className="w-4 h-4" />
+              Admin
+            </button>
+          ) : (
+            <div className="flex gap-2">
+              <div className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg">
+                <Unlock className="w-4 h-4" />
+                Admin Mode
+              </div>
+              <button
+                onClick={handleAdminLogout}
+                className="bg-red-600 text-white px-3 py-2 rounded-lg shadow-lg hover:bg-red-700 transition-colors"
+              >
+                <Lock className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Admin Password Modal */}
@@ -773,10 +904,50 @@ const GolfEventManager = () => {
           </div>
         )}
 
+        {/* Tab Navigation */}
+        <div className="flex border-b border-gray-200 mb-8">
+          <button
+            onClick={() => setActiveTab('events')}
+            className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'events'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Clock className="w-4 h-4 inline mr-2" />
+            Events
+          </button>
+          <button
+            onClick={() => setActiveTab('raffle')}
+            className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'raffle'
+                ? 'border-purple-500 text-purple-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Gift className="w-4 h-4 inline mr-2" />
+            Raffle
+          </button>
+          <button
+            onClick={() => setActiveTab('auction')}
+            className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'auction'
+                ? 'border-emerald-500 text-emerald-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Gavel className="w-4 h-4 inline mr-2" />
+            Auction
+          </button>
+        </div>
+
         {!isLoading && !error && (
           <>
-            {/* Next Event Alert */}
-            {nextEventIndex < events.length && (
+            {/* Events Tab Content */}
+            {activeTab === 'events' && (
+              <>
+                {/* Next Event Alert */}
+                {nextEventIndex < events.length && (
               <div className="bg-slate-800 text-white rounded-xl p-6 mb-8 shadow-sm">
                 <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
                   <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
@@ -983,67 +1154,198 @@ const GolfEventManager = () => {
                 })}
               </div>
             </div>
+              </>
+            )}
 
-            {/* Raffle Section */}
-            <div className="mt-12 p-8 bg-white rounded-xl shadow-sm border border-slate-200">
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="text-xl font-semibold text-slate-900 flex items-center gap-2">
-                  <Gift className="w-6 h-6 text-purple-600" />
-                  Raffle Prizes
-                </h3>
-                {isAdminMode && (
-                  <button
-                    onClick={() => openRaffleModal()}
-                    className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Add Prize
-                  </button>
-                )}
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {raffleItems.map((item, index) => (
-                  <div key={item.id} className="relative p-6 border border-slate-200 rounded-lg hover:shadow-md transition-shadow">
-                    {isAdminMode && (
-                      <div className="absolute top-2 right-2 flex gap-1">
-                        <button
-                          onClick={() => openRaffleModal(item, index)}
-                          className="p-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-                        >
-                          <Edit className="w-3 h-3" />
-                        </button>
-                        <button
-                          onClick={() => deleteRaffle(index)}
-                          className="p-1 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
+
+            {/* Raffle Tab Content */}
+            {activeTab === 'raffle' && (
+              <div className="space-y-8">
+                <div className="text-center">
+                  <h2 className="text-2xl font-bold text-slate-900 mb-2">Raffle Prizes</h2>
+                  <p className="text-slate-600">Amazing prizes up for grabs!</p>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {raffleItems.map((item, index) => (
+                    <div key={item.id} className="relative p-6 border border-slate-200 rounded-lg hover:shadow-md transition-shadow">
+                      {isAdminMode && (
+                        <div className="absolute top-2 right-2 flex gap-1">
+                          <button
+                            onClick={() => openRaffleModal(item, index)}
+                            className="p-1 text-slate-400 hover:text-blue-600 transition-colors"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => deleteRaffleItem(index)}
+                            className="p-1 text-slate-400 hover:text-red-600 transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
+                      
+                      <div className="mb-4">
+                        <img
+                          src={item.logo_url}
+                          alt={`${item.sponsor} logo`}
+                          className="w-full h-16 object-contain rounded"
+                          onError={(e) => {
+                            e.target.style.display = 'none';
+                          }}
+                        />
                       </div>
-                    )}
-                    
-                    {/* Sponsor Logo */}
-                    <div className="flex justify-center mb-4">
-                      <img 
-                        src={logoUploads[item.id] ? URL.createObjectURL(logoUploads[item.id]) : item.logo_url} 
-                        alt={`${item.sponsor} logo`}
-                        className="h-12 w-auto object-contain rounded-lg shadow-sm"
-                        onError={(e) => {
-                          e.target.style.display = 'none';
-                        }}
-                      />
+                      
+                      <h4 className="font-semibold text-slate-900 mb-2">{item.prize}</h4>
+                      <p className="text-sm text-slate-600 mb-3">{item.description}</p>
+                      <div className="flex justify-between items-center">
+                        <span className="text-lg font-bold text-purple-600">{item.value}</span>
+                        <span className="text-xs text-slate-500">by {item.sponsor}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Auction Tab Content */}
+            {activeTab === 'auction' && (
+              <div className="space-y-8">
+                <div className="text-center">
+                  <h2 className="text-2xl font-bold text-slate-900 mb-2">Auction Results</h2>
+                  <p className="text-slate-600">Live auction bidding results</p>
+                </div>
+
+                {/* Painting Information */}
+                {painting && (
+                  <div className="bg-white border border-gray-200 rounded-lg p-6">
+                    <div className="flex justify-between items-start mb-4">
+                      <h3 className="text-lg font-semibold text-gray-900">Auction Item Details</h3>
+                      {isAdminMode && (
+                        <button
+                          onClick={() => openPaintingModal()}
+                          className="flex items-center gap-2 bg-blue-600 text-white px-3 py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                        >
+                          <Edit className="w-4 h-4" />
+                          Edit Painting
+                        </button>
+                      )}
                     </div>
                     
-                    <h4 className="font-semibold text-slate-900 mb-2">{item.prize}</h4>
-                    <p className="text-sm text-slate-600 mb-3">{item.description}</p>
-                    <div className="flex justify-between items-center">
-                      <span className="text-lg font-bold text-purple-600">{item.value}</span>
-                      <span className="text-xs text-slate-500">by {item.sponsor}</span>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div>
+                        <h4 className="font-semibold text-gray-900 mb-2">{painting.title}</h4>
+                        <p className="text-gray-600 mb-2">by {painting.artist}</p>
+                        <p className="text-sm text-gray-500 mb-4">{painting.year} • {painting.medium}</p>
+                        <p className="text-sm text-gray-600 mb-4">{painting.description}</p>
+                        
+                        <div className="space-y-2 text-sm">
+                          <div><span className="font-medium">Dimensions:</span> {painting.dimensions}</div>
+                          <div><span className="font-medium">Condition:</span> {painting.condition}</div>
+                          <div><span className="font-medium">Starting Bid:</span> 
+                            <span className="font-semibold text-emerald-600 ml-1">
+                              {new Intl.NumberFormat('en-ZA', {
+                                style: 'currency',
+                                currency: 'ZAR',
+                                minimumFractionDigits: 0,
+                                maximumFractionDigits: 0,
+                              }).format(painting.starting_bid)}
+                            </span>
+                          </div>
+                          <div><span className="font-medium">Estimated Value:</span> 
+                            <span className="font-semibold text-blue-600 ml-1">
+                              {new Intl.NumberFormat('en-ZA', {
+                                style: 'currency',
+                                currency: 'ZAR',
+                                minimumFractionDigits: 0,
+                                maximumFractionDigits: 0,
+                              }).format(painting.estimated_value)}
+                            </span>
+                          </div>
+                          {painting.auction_end && (
+                            <div><span className="font-medium">Auction Ends:</span> 
+                              <span className="ml-1">{new Date(painting.auction_end).toLocaleString()}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {painting.image_url && (
+                        <div className="flex justify-center items-center">
+                          <img
+                            src={painting.image_url}
+                            alt={painting.title}
+                            className="w-full h-80 object-cover rounded-lg border border-gray-200 shadow-sm"
+                            onError={(e) => {
+                              e.target.style.display = 'none';
+                            }}
+                          />
+                        </div>
+                      )}
                     </div>
                   </div>
-                ))}
+                )}
+
+                {loadingAuction ? (
+                  <div className="text-center py-12">
+                    <div className="inline-flex items-center gap-3 text-slate-600">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-emerald-600"></div>
+                      <span>Loading auction data...</span>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {/* Highest Bidder Display */}
+                    {highestBid && (
+                      <div className="bg-gradient-to-r from-emerald-50 to-green-50 border border-emerald-200 rounded-xl p-6 mb-8">
+                        <div className="text-center">
+                          <h3 className="text-xl font-bold text-emerald-800 mb-2">🏆 Current Highest Bidder</h3>
+                          <div className="text-3xl font-bold text-emerald-600 mb-2">
+                            {highestBid.bidder_name}
+                          </div>
+                          <div className="text-2xl font-semibold text-emerald-700 mb-2">
+                            {new Intl.NumberFormat('en-ZA', {
+                              style: 'currency',
+                              currency: 'ZAR',
+                              minimumFractionDigits: 0,
+                              maximumFractionDigits: 0,
+                            }).format(highestBid.bid_amount)}
+                          </div>
+                          <div className="text-sm text-emerald-600">
+                            Bid placed: {new Date(highestBid.created_at).toLocaleString()}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Statistics */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                      <div className="bg-white border border-gray-200 rounded-lg p-6 text-center">
+                        <div className="text-2xl font-bold text-emerald-600">{totalBidders}</div>
+                        <div className="text-sm text-gray-600">Total Bidders</div>
+                      </div>
+                      <div className="bg-white border border-gray-200 rounded-lg p-6 text-center">
+                        <div className="text-2xl font-bold text-blue-600">{auctionBids.length}</div>
+                        <div className="text-sm text-gray-600">Total Bids</div>
+                      </div>
+                      <div className="bg-white border border-gray-200 rounded-lg p-6 text-center">
+                        <div className="text-2xl font-bold text-purple-600">
+                          {highestBid ? new Intl.NumberFormat('en-ZA', {
+                            style: 'currency',
+                            currency: 'ZAR',
+                            minimumFractionDigits: 0,
+                            maximumFractionDigits: 0,
+                          }).format(highestBid.bid_amount) : 'R0'}
+                        </div>
+                        <div className="text-sm text-gray-600">Highest Bid</div>
+                      </div>
+                    </div>
+
+                  </>
+                )}
               </div>
-            </div>
+            )}
           </>
         )}
       </div>
@@ -1339,6 +1641,178 @@ const GolfEventManager = () => {
               </button>
               <button
                 onClick={() => setShowRaffleModal(false)}
+                className="flex-1 bg-slate-200 text-slate-700 px-4 py-2 rounded-lg hover:bg-slate-300 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Painting Modal */}
+      {showPaintingModal && editingPainting && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 w-full max-w-4xl shadow-2xl max-h-screen overflow-y-auto">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-semibold">Edit Painting Details</h3>
+              <button onClick={() => setShowPaintingModal(false)}>
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Title</label>
+                  <input
+                    type="text"
+                    value={editingPainting.title || ''}
+                    onChange={(e) => setEditingPainting({...editingPainting, title: e.target.value})}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Painting title"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">Artist</label>
+                  <input
+                    type="text"
+                    value={editingPainting.artist || ''}
+                    onChange={(e) => setEditingPainting({...editingPainting, artist: e.target.value})}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Artist name"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Year</label>
+                    <input
+                      type="number"
+                      value={editingPainting.year || ''}
+                      onChange={(e) => setEditingPainting({...editingPainting, year: parseInt(e.target.value)})}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Year"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Medium</label>
+                    <input
+                      type="text"
+                      value={editingPainting.medium || ''}
+                      onChange={(e) => setEditingPainting({...editingPainting, medium: e.target.value})}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Oil on canvas"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">Dimensions</label>
+                  <input
+                    type="text"
+                    value={editingPainting.dimensions || ''}
+                    onChange={(e) => setEditingPainting({...editingPainting, dimensions: e.target.value})}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="60cm x 80cm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">Condition</label>
+                  <select
+                    value={editingPainting.condition || ''}
+                    onChange={(e) => setEditingPainting({...editingPainting, condition: e.target.value})}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="">Select condition</option>
+                    <option value="Excellent">Excellent</option>
+                    <option value="Very Good">Very Good</option>
+                    <option value="Good">Good</option>
+                    <option value="Fair">Fair</option>
+                    <option value="Poor">Poor</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Description</label>
+                  <textarea
+                    value={editingPainting.description || ''}
+                    onChange={(e) => setEditingPainting({...editingPainting, description: e.target.value})}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 h-24"
+                    placeholder="Painting description"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">Image URL</label>
+                  <input
+                    type="url"
+                    value={editingPainting.image_url || ''}
+                    onChange={(e) => setEditingPainting({...editingPainting, image_url: e.target.value})}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="https://example.com/image.jpg"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Starting Bid (ZAR)</label>
+                    <input
+                      type="number"
+                      value={editingPainting.starting_bid || ''}
+                      onChange={(e) => setEditingPainting({...editingPainting, starting_bid: parseFloat(e.target.value)})}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="1000"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Estimated Value (ZAR)</label>
+                    <input
+                      type="number"
+                      value={editingPainting.estimated_value || ''}
+                      onChange={(e) => setEditingPainting({...editingPainting, estimated_value: parseFloat(e.target.value)})}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="5000"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">Provenance</label>
+                  <textarea
+                    value={editingPainting.provenance || ''}
+                    onChange={(e) => setEditingPainting({...editingPainting, provenance: e.target.value})}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 h-20"
+                    placeholder="History of ownership"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">Auction End Date</label>
+                  <input
+                    type="datetime-local"
+                    value={editingPainting.auction_end ? new Date(editingPainting.auction_end).toISOString().slice(0, 16) : ''}
+                    onChange={(e) => setEditingPainting({...editingPainting, auction_end: e.target.value ? new Date(e.target.value).toISOString() : null})}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={savePainting}
+                className="flex-1 flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <Save className="w-4 h-4" />
+                Save Changes
+              </button>
+              <button
+                onClick={() => setShowPaintingModal(false)}
                 className="flex-1 bg-slate-200 text-slate-700 px-4 py-2 rounded-lg hover:bg-slate-300 transition-colors"
               >
                 Cancel

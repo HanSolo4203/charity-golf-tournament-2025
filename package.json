@@ -1,6 +1,7 @@
 {
   "name": "golf-event-manager",
   "version": "1.0.0",
+  "type": "module",
   "description": "A professional golf tournament event manager with admin controls",
   "main": "index.js",
   "scripts": {
