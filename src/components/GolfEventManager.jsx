@@ -654,42 +654,6 @@ const GolfEventManager = ({ onNavigateToAuction }) => {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Admin Toggle */}
-      <div className="fixed top-4 right-4 z-50">
-        <div className="flex gap-2">
-          {onNavigateToAuction && (
-            <button
-              onClick={onNavigateToAuction}
-              className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg shadow-lg hover:bg-purple-700 transition-colors"
-            >
-              <Gavel className="w-4 h-4" />
-              Live Auction
-            </button>
-          )}
-          {!isAdminMode ? (
-            <button
-              onClick={() => setShowPasswordModal(true)}
-              className="flex items-center gap-2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg hover:bg-slate-700 transition-colors"
-            >
-              <Settings className="w-4 h-4" />
-              Admin
-            </button>
-          ) : (
-            <div className="flex gap-2">
-              <div className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg">
-                <Unlock className="w-4 h-4" />
-                Admin Mode
-              </div>
-              <button
-                onClick={handleAdminLogout}
-                className="bg-red-600 text-white px-3 py-2 rounded-lg shadow-lg hover:bg-red-700 transition-colors"
-              >
-                <Lock className="w-4 h-4" />
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
 
       {/* Admin Password Modal */}
       {showPasswordModal && (
@@ -1212,10 +1176,18 @@ const GolfEventManager = ({ onNavigateToAuction }) => {
             {/* Auction Tab Content */}
             {activeTab === 'auction' && (
               <div className="space-y-8">
-                <div className="text-center">
-                  <h2 className="text-2xl font-bold text-slate-900 mb-2">Auction Results</h2>
-                  <p className="text-slate-600">Live auction bidding results</p>
-                </div>
+                {/* View Item Button */}
+                {onNavigateToAuction && (
+                  <div className="text-center">
+                    <button
+                      onClick={onNavigateToAuction}
+                      className="flex items-center gap-2 bg-purple-600 text-white px-6 py-3 rounded-lg shadow-lg hover:bg-purple-700 transition-colors mx-auto"
+                    >
+                      <Gavel className="w-5 h-5" />
+                      View Item
+                    </button>
+                  </div>
+                )}
 
                 {/* Painting Information */}
                 {painting && (
@@ -1829,6 +1801,36 @@ const GolfEventManager = ({ onNavigateToAuction }) => {
         {isAdminMode && (
           <p className="text-green-600 text-xs mt-2 font-semibold">✓ Admin Mode Active - Events can be modified</p>
         )}
+        
+        {/* Admin Controls - Moved to Bottom */}
+        <div className="mt-6 flex justify-center gap-3">
+          {onNavigateToAuction && (
+            <button
+              onClick={onNavigateToAuction}
+              className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg shadow-lg hover:bg-purple-700 transition-colors"
+            >
+              <Gavel className="w-4 h-4" />
+              Live Auction
+            </button>
+          )}
+          {!isAdminMode ? (
+            <button
+              onClick={() => setShowPasswordModal(true)}
+              className="flex items-center gap-2 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg hover:bg-slate-700 transition-colors"
+            >
+              <Settings className="w-4 h-4" />
+              Admin
+            </button>
+          ) : (
+            <button
+              onClick={() => setIsAdminMode(false)}
+              className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg hover:bg-green-700 transition-colors"
+            >
+              <Unlock className="w-4 h-4" />
+              Exit Admin
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
