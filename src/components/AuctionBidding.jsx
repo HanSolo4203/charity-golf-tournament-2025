@@ -1,8 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Gavel, Clock, User, DollarSign, Heart, Share2, Flag, Calendar, MapPin, Mail, Phone, Loader2, AlertCircle, CheckCircle, TrendingUp, Shield, Lock } from 'lucide-react';
 import { supabase, db } from '../lib/supabase';
 
-const AuctionBidding = ({ onBack, paintingId = 1 }) => {
+const AuctionBidding = () => {
+  const navigate = useNavigate();
+  const { paintingId } = useParams();
+  const actualPaintingId = paintingId ? parseInt(paintingId) : 1;
   const [painting, setPainting] = useState(null);
   const [currentBid, setCurrentBid] = useState(0);
   const [bidHistory, setBidHistory] = useState([]);
@@ -48,6 +52,10 @@ const AuctionBidding = ({ onBack, paintingId = 1 }) => {
   const MAX_BID_AMOUNT = 1000000; // $1M max bid
   const MIN_BID_AMOUNT = 1;
 
+  // Check if user is the highest bidder or has been outbid
+  const isHighestBidder = currentBidder && personalBids.length > 0 && personalBids[0]?.bid_amount === currentBid;
+  const hasBeenOutbid = currentBidder && personalBids.length > 0 && personalBids[0]?.bid_amount < currentBid;
+
   // Security and validation utilities
   const sanitizeInput = useCallback((input) => {
     if (typeof input !== 'string') return input;
@@ -70,12 +78,8 @@ const AuctionBidding = ({ onBack, paintingId = 1 }) => {
   }, []);
 
   const formatPhoneNumber = useCallback((value) => {
-    const phoneNumber = value.replace(/\D/g, '');
-    if (phoneNumber.length === 0) return '';
-    if (phoneNumber.length <= 3) return phoneNumber;
-    if (phoneNumber.length <= 6) return `(${phoneNumber.slice(0, 3)}) ${phoneNumber.slice(3)}`;
-    if (phoneNumber.length <= 10) return `(${phoneNumber.slice(0, 3)}) ${phoneNumber.slice(3, 6)}-${phoneNumber.slice(6)}`;
-    return `+${phoneNumber.slice(0, -10)} (${phoneNumber.slice(-10, -7)}) ${phoneNumber.slice(-7, -4)}-${phoneNumber.slice(-4)}`;
+    // Remove all non-digit characters and return the raw phone number
+    return value.replace(/\D/g, '');
   }, []);
 
   const formatCurrencyInput = useCallback((value) => {
@@ -110,7 +114,26 @@ const AuctionBidding = ({ onBack, paintingId = 1 }) => {
     loadPaintingData();
     loadBidHistory();
     setupRealtimeSubscription();
-  }, [paintingId]);
+    
+    // Fallback polling mechanism in case real-time doesn't work
+    const pollInterval = setInterval(async () => {
+      try {
+        const highestBid = await db.getHighestBid(actualPaintingId);
+        if (highestBid && highestBid.bid_amount > currentBid) {
+          console.log('Polling detected new highest bid:', highestBid.bid_amount);
+          setCurrentBid(highestBid.bid_amount);
+          setBidAnimation(true);
+          setTimeout(() => setBidAnimation(false), BID_ANIMATION_DURATION);
+        }
+      } catch (error) {
+        console.error('Error in polling check:', error);
+      }
+    }, 5000); // Check every 5 seconds
+    
+    return () => {
+      clearInterval(pollInterval);
+    };
+  }, [actualPaintingId, currentBid]);
 
   // Countdown timer
   useEffect(() => {
@@ -141,11 +164,14 @@ const AuctionBidding = ({ onBack, paintingId = 1 }) => {
       setLoading(true);
       setError(null);
       
-      const paintingData = await db.getPainting(paintingId);
+      console.log('Loading painting data for ID:', actualPaintingId);
+      const paintingData = await db.getPainting(actualPaintingId);
+      console.log('Painting data loaded:', paintingData);
       setPainting(paintingData);
       
       // Get the highest bid
-      const highestBid = await db.getHighestBid(paintingId);
+      const highestBid = await db.getHighestBid(actualPaintingId);
+      console.log('Highest bid loaded:', highestBid);
       setCurrentBid(highestBid ? highestBid.bid_amount : paintingData.starting_bid);
       
     } catch (err) {
@@ -158,7 +184,9 @@ const AuctionBidding = ({ onBack, paintingId = 1 }) => {
 
   const loadBidHistory = async () => {
     try {
-      const bids = await db.getBidHistory(paintingId, 10);
+      console.log('Loading bid history for painting ID:', actualPaintingId);
+      const bids = await db.getBidHistory(actualPaintingId, 10);
+      console.log('Bid history loaded:', bids);
       setBidHistory(bids);
     } catch (err) {
       console.error('Error loading bid history:', err);
@@ -168,7 +196,7 @@ const AuctionBidding = ({ onBack, paintingId = 1 }) => {
   const loadPersonalBids = async (bidderEmail, bidderPhone) => {
     try {
       setLoadingPersonalBids(true);
-      const bids = await db.getBidsByBidder(paintingId, bidderEmail, bidderPhone);
+      const bids = await db.getBidsByBidder(actualPaintingId, bidderEmail, bidderPhone);
       setPersonalBids(bids);
     } catch (err) {
       console.error('Error loading personal bids:', err);
@@ -200,7 +228,7 @@ const AuctionBidding = ({ onBack, paintingId = 1 }) => {
 
     try {
       const bidData = {
-        painting_id: paintingId,
+        painting_id: actualPaintingId,
         bidder_name: currentBidder.bidder_name,
         bidder_email: currentBidder.bidder_email,
         bidder_phone: currentBidder.bidder_phone,
@@ -316,10 +344,12 @@ const AuctionBidding = ({ onBack, paintingId = 1 }) => {
       setBidderNotFound(false);
       setReturningBidder(null);
 
+      console.log('Searching for returning bidder with email:', returningEmail, 'phone:', returningPhone, 'painting ID:', actualPaintingId);
+
       let query = supabase
         .from('bids')
         .select('bidder_name, bidder_email, bidder_phone')
-        .eq('painting_id', paintingId);
+        .eq('painting_id', actualPaintingId);
 
       if (returningEmail.trim()) {
         query = query.eq('bidder_email', returningEmail.trim());
@@ -329,12 +359,21 @@ const AuctionBidding = ({ onBack, paintingId = 1 }) => {
 
       const { data, error } = await query.limit(1).single();
 
+      console.log('Returning bidder search result:', { data, error });
+
       if (error || !data) {
         setBidderNotFound(true);
         setReturningBidder(null);
       } else {
         setReturningBidder(data);
         setBidderNotFound(false);
+        
+        // Set current bidder and switch to "Your Bids" tab
+        setCurrentBidder(data);
+        setActiveTab('your-bids');
+        
+        // Load personal bids for the returning bidder
+        loadPersonalBids(data.bidder_email, data.bidder_phone);
       }
     } catch (err) {
       console.error('Error searching for bidder:', err);
@@ -415,47 +454,41 @@ const AuctionBidding = ({ onBack, paintingId = 1 }) => {
   }
 
   const setupRealtimeSubscription = () => {
+    console.log('Setting up real-time subscription for painting:', actualPaintingId);
+    
     const channel = supabase
-      .channel('bids_changes')
+      .channel(`bids_changes_${actualPaintingId}`)
       .on(
         'postgres_changes',
         {
           event: 'INSERT',
           schema: 'public',
           table: 'bids',
-          filter: `painting_id=eq.${paintingId}`
+          filter: `painting_id=eq.${actualPaintingId}`
         },
-        async (payload) => {
-          console.log('New bid received:', payload);
+        (payload) => {
+          console.log('New bid received via real-time:', payload);
           const newBid = payload.new;
           
           // Animate bid update
           setBidAnimation(true);
           setTimeout(() => setBidAnimation(false), BID_ANIMATION_DURATION);
           
-          // Refresh all data to ensure accuracy
-          try {
-            // Get the actual highest bid from database
-            const highestBid = await db.getHighestBid(paintingId);
-            if (highestBid) {
-              setCurrentBid(highestBid.bid_amount);
+          // Update current bid immediately if higher
+          setCurrentBid(prevBid => {
+            console.log('Updating current bid from', prevBid, 'to', newBid.bid_amount);
+            if (newBid.bid_amount > prevBid) {
+              return newBid.bid_amount;
             }
-            
-            // Reload bid history
-            const updatedBidHistory = await db.getBidHistory(paintingId, 10);
-            setBidHistory(updatedBidHistory);
-            
-            // If we have a current bidder, refresh their personal bids
-            if (currentBidder) {
-              await loadPersonalBids(currentBidder.bidder_email, currentBidder.bidder_phone);
-            }
-          } catch (error) {
-            console.error('Error refreshing bid data:', error);
-            // Fallback to simple update
-            if (newBid.bid_amount > currentBid) {
-              setCurrentBid(newBid.bid_amount);
-            }
-            setBidHistory(prev => [newBid, ...prev.slice(0, 9)]);
+            return prevBid;
+          });
+          
+          // Add to bid history
+          setBidHistory(prev => [newBid, ...prev.slice(0, 9)]);
+          
+          // Refresh personal bids if we have a current bidder
+          if (currentBidder) {
+            loadPersonalBids(currentBidder.bidder_email, currentBidder.bidder_phone);
           }
           
           // Show success message
@@ -463,7 +496,9 @@ const AuctionBidding = ({ onBack, paintingId = 1 }) => {
           setTimeout(() => setSuccess(null), 5000);
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('Real-time subscription status:', status);
+      });
 
     return () => {
       supabase.removeChannel(channel);
@@ -505,8 +540,10 @@ const AuctionBidding = ({ onBack, paintingId = 1 }) => {
         bidder_email: sanitizeInput(bidderEmail.trim()) || null,
         bidder_phone: sanitizeInput(bidderPhone.trim()) || null,
         bid_amount: parseFloat(sanitizeInput(bidAmount)),
-        painting_id: paintingId
+        painting_id: actualPaintingId
       };
+
+      console.log('Submitting bid with data:', sanitizedBidData);
 
       // Additional server-side validation
       if (sanitizedBidData.bid_amount <= currentBid) {
@@ -523,15 +560,19 @@ const AuctionBidding = ({ onBack, paintingId = 1 }) => {
       setLastSubmissionTime(Date.now());
       setSubmissionCount(prev => prev + 1);
       
+      // Immediately update current bid locally
+      setCurrentBid(sanitizedBidData.bid_amount);
+      
       // Animate the bid update
       setBidAnimation(true);
       setTimeout(() => setBidAnimation(false), BID_ANIMATION_DURATION);
       
-      // Refresh data from database to ensure accuracy
-      await Promise.all([
-        loadPaintingData(),
-        loadBidHistory()
-      ]);
+      // Add to bid history immediately
+      setBidHistory(prev => [newBid, ...prev.slice(0, 9)]);
+      
+      // Refresh data from database to ensure accuracy (in background)
+      loadPaintingData();
+      loadBidHistory();
       
       // Clear form
       setBidAmount('');
@@ -576,70 +617,6 @@ const AuctionBidding = ({ onBack, paintingId = 1 }) => {
   };
 
   // Simplified bid submission for returning bidders
-  const handleReturningBidSubmit = async (e) => {
-    e.preventDefault();
-    
-    if (isProcessing || submittingBid || !returningBidder) {
-      return;
-    }
-
-    if (!bidAmount || parseFloat(bidAmount) <= currentBid) {
-      setError('Please enter a valid bid amount higher than the current bid.');
-      return;
-    }
-
-    try {
-      setIsProcessing(true);
-      setSubmittingBid(true);
-      setError(null);
-      setSuccess(null);
-
-      const bidData = {
-        bidder_name: returningBidder.bidder_name,
-        bidder_email: returningBidder.bidder_email,
-        bidder_phone: returningBidder.bidder_phone,
-        bid_amount: parseFloat(bidAmount),
-        painting_id: paintingId
-      };
-
-      const newBid = await db.createBid(bidData);
-      
-      // Update rate limiting
-      setLastSubmissionTime(Date.now());
-      setSubmissionCount(prev => prev + 1);
-      
-      // Animate the bid update
-      setBidAnimation(true);
-      setTimeout(() => setBidAnimation(false), BID_ANIMATION_DURATION);
-      
-      // Refresh data from database to ensure accuracy
-      await Promise.all([
-        loadPaintingData(),
-        loadBidHistory()
-      ]);
-      
-      // Clear form
-      setBidAmount('');
-      
-      // Set current bidder for "Your Bids" tab
-      setCurrentBidder({
-        bidder_name: returningBidder.bidder_name,
-        bidder_email: returningBidder.bidder_email,
-        bidder_phone: returningBidder.bidder_phone
-      });
-      
-      // Show success message
-      setSuccess(`🎉 Welcome back ${returningBidder.bidder_name}! Your bid of ${formatCurrency(bidData.bid_amount)} has been submitted successfully!`);
-      setTimeout(() => setSuccess(null), 10000);
-      
-    } catch (err) {
-      console.error('Error submitting bid:', err);
-      setError('Failed to submit bid. Please try again.');
-    } finally {
-      setIsProcessing(false);
-      setSubmittingBid(false);
-    }
-  };
 
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-MW', {
@@ -679,7 +656,7 @@ const AuctionBidding = ({ onBack, paintingId = 1 }) => {
           <AlertCircle className="h-8 w-8 text-red-500 mx-auto mb-4" />
           <p className="text-gray-600">Painting not found</p>
           <button
-            onClick={onBack}
+            onClick={() => navigate('/')}
             className="mt-4 text-emerald-600 hover:text-emerald-700 font-medium"
           >
             ← Back to Golf Itinerary
@@ -697,7 +674,7 @@ const AuctionBidding = ({ onBack, paintingId = 1 }) => {
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center space-x-4">
               <button
-                onClick={onBack}
+                onClick={() => navigate('/')}
                 className="flex items-center space-x-2 text-emerald-600 hover:text-emerald-700 transition-colors"
               >
                 <ArrowLeft className="h-5 w-5" />
@@ -801,8 +778,10 @@ const AuctionBidding = ({ onBack, paintingId = 1 }) => {
               </div>
               
               <div className="text-center mb-6">
-                <div className={`text-4xl font-bold text-emerald-600 mb-2 transition-all duration-1000 ${
-                  bidAnimation ? 'scale-110 text-emerald-500' : 'scale-100'
+                <div className={`text-4xl font-bold mb-2 transition-all duration-1000 ${
+                  bidAnimation ? 'scale-110' : 'scale-100'
+                } ${
+                  hasBeenOutbid ? 'text-red-600' : 'text-emerald-600'
                 }`}>
                   {formatCurrency(currentBid)}
                 </div>
@@ -810,6 +789,12 @@ const AuctionBidding = ({ onBack, paintingId = 1 }) => {
                   <div className="flex items-center justify-center space-x-1 text-emerald-500 mb-2 animate-pulse">
                     <TrendingUp className="h-4 w-4" />
                     <span className="text-sm font-medium">New High Bid!</span>
+                  </div>
+                )}
+                {hasBeenOutbid && (
+                  <div className="flex items-center justify-center space-x-1 text-red-600 mb-2">
+                    <AlertCircle className="h-4 w-4" />
+                    <span className="text-sm font-medium">You have been outbid!</span>
                   </div>
                 )}
                 <div className="text-sm text-gray-500">
@@ -848,6 +833,69 @@ const AuctionBidding = ({ onBack, paintingId = 1 }) => {
                   </div>
                 </div>
               </div>
+
+              {/* Welcome Card - Only show if user has placed a bid */}
+              {currentBidder && (
+                <div className="p-4 bg-green-50 border border-green-200 rounded-lg mb-6">
+                  <div className="flex items-center space-x-2">
+                    <CheckCircle className="h-5 w-5 text-green-500" />
+                    <div>
+                      <p className="text-green-800 font-medium">Welcome, {currentBidder.bidder_name}!</p>
+                      <p className="text-green-600 text-sm">View your bidding history and place new bids</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Place New Bid Section - Only show if user has placed a bid */}
+              {currentBidder && (
+                <div className="bg-white border border-gray-200 rounded-lg p-4 mb-6">
+                  <h4 className="text-lg font-semibold text-gray-900 mb-4">Place New Bid</h4>
+                  <form onSubmit={handlePersonalBidSubmit} className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Your Bid Amount *
+                      </label>
+                      <div className="relative">
+                        <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                        <input
+                          type="text"
+                          value={bidAmount}
+                          onChange={(e) => {
+                            const formatted = formatCurrencyInput(e.target.value);
+                            setBidAmount(formatted);
+                          }}
+                          placeholder="Enter bid amount"
+                          className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                          required
+                          disabled={submittingBid || isProcessing}
+                        />
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Minimum bid: {formatCurrency(currentBid + MIN_BID_INCREMENT)}
+                      </p>
+                    </div>
+                    
+                    <button
+                      type="submit"
+                      disabled={submittingBid || isProcessing}
+                      className="w-full bg-emerald-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-emerald-700 transition-colors flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {submittingBid || isProcessing ? (
+                        <>
+                          <Loader2 className="h-5 w-5 animate-spin" />
+                          <span>Submitting Bid...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Gavel className="h-5 w-5" />
+                          <span>Place New Bid</span>
+                        </>
+                      )}
+                    </button>
+                  </form>
+                </div>
+              )}
 
               {/* Tab System */}
               <div className="mb-6">
@@ -1052,7 +1100,7 @@ const AuctionBidding = ({ onBack, paintingId = 1 }) => {
                           debouncedCheckBidder('', formatted);
                         }
                       }}
-                      placeholder="(123) 456-7890"
+                      placeholder="1234567890"
                       className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-colors ${
                         formErrors.bidderPhone 
                           ? 'border-red-300 bg-red-50' 
@@ -1178,53 +1226,15 @@ const AuctionBidding = ({ onBack, paintingId = 1 }) => {
                           <CheckCircle className="h-5 w-5 text-green-500" />
                           <div>
                             <p className="text-green-800 font-medium">Welcome back, {returningBidder.bidder_name}!</p>
-                            <p className="text-green-600 text-sm">Ready to place another bid?</p>
+                            <p className="text-green-600 text-sm">You have been automatically moved to your bidding area.</p>
                           </div>
                         </div>
                       </div>
                       
-                      <form onSubmit={handleReturningBidSubmit} className="space-y-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Your Bid Amount *
-                          </label>
-                          <div className="relative">
-                            <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-                            <input
-                              type="text"
-                              value={bidAmount}
-                              onChange={(e) => {
-                                const formatted = formatCurrencyInput(e.target.value);
-                                setBidAmount(formatted);
-                              }}
-                              placeholder="Enter bid amount"
-                              className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                              required
-                              disabled={submittingBid || isProcessing}
-                            />
-                          </div>
-                          <p className="text-xs text-gray-500 mt-1">
-                            Minimum bid: {formatCurrency(currentBid + MIN_BID_INCREMENT)}
-                          </p>
-                        </div>
-                        
-                        <button
-                          type="submit"
-                          disabled={submittingBid || isProcessing}
-                          className="w-full bg-emerald-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-emerald-700 transition-colors flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {submittingBid || isProcessing ? (
-                            <>
-                              <Loader2 className="h-5 w-5 animate-spin" />
-                              <span>Submitting Bid...</span>
-                            </>
-                          ) : (
-                            <>
-                              <Gavel className="h-5 w-5" />
-                              <span>Place Bid</span>
-                            </>
-                          )}
-                        </button>
+                      <div className="text-center space-y-4">
+                        <p className="text-gray-600">
+                          You can now view your bidding history and place new bids in the "Your Bids" tab.
+                        </p>
                         
                         <button
                           type="button"
@@ -1233,7 +1243,7 @@ const AuctionBidding = ({ onBack, paintingId = 1 }) => {
                         >
                           Search for Different Bidder
                         </button>
-                      </form>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1242,28 +1252,26 @@ const AuctionBidding = ({ onBack, paintingId = 1 }) => {
               {/* Your Bids Tab */}
               {activeTab === 'your-bids' && currentBidder && (
                 <div className="space-y-6">
-                  {/* Current Bidder Info */}
-                  <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-                    <div className="flex items-center space-x-2">
-                      <CheckCircle className="h-5 w-5 text-green-500" />
-                      <div>
-                        <p className="text-green-800 font-medium">Welcome, {currentBidder.bidder_name}!</p>
-                        <p className="text-green-600 text-sm">View your bidding history and place new bids</p>
-                      </div>
-                    </div>
-                  </div>
 
-                  {/* Current Highest Bid */}
+                  {/* Bid Status */}
                   <div className="bg-white border border-gray-200 rounded-lg p-4">
-                    <h4 className="text-lg font-semibold text-gray-900 mb-3">Current Highest Bid</h4>
+                    <h4 className="text-lg font-semibold text-gray-900 mb-3">Your Bid Status</h4>
                     <div className="text-center">
-                      <div className="text-3xl font-bold text-emerald-600 mb-2">
-                        {formatCurrency(currentBid)}
+                      <div className={`text-3xl font-bold mb-2 ${
+                        hasBeenOutbid ? 'text-red-600' : isHighestBidder ? 'text-emerald-600' : 'text-gray-600'
+                      }`}>
+                        {personalBids.length > 0 ? formatCurrency(personalBids[0]?.bid_amount) : 'No bids yet'}
                       </div>
-                      <p className="text-sm text-gray-600">
-                        {personalBids.length > 0 && personalBids[0]?.bid_amount === currentBid 
-                          ? "🏆 You are currently the highest bidder!" 
-                          : "Someone else is currently leading"}
+                      <p className={`text-sm ${
+                        hasBeenOutbid ? 'text-red-600' : isHighestBidder ? 'text-emerald-600' : 'text-gray-600'
+                      }`}>
+                        {hasBeenOutbid 
+                          ? "❌ You have been outbid!" 
+                          : isHighestBidder 
+                            ? "🏆 You are currently the highest bidder!" 
+                            : personalBids.length > 0 
+                              ? "Someone else is currently leading"
+                              : "Place your first bid above"}
                       </p>
                     </div>
                   </div>
@@ -1325,53 +1333,6 @@ const AuctionBidding = ({ onBack, paintingId = 1 }) => {
                     )}
                   </div>
 
-                  {/* Place New Bid Form */}
-                  <div className="bg-white border border-gray-200 rounded-lg p-4">
-                    <h4 className="text-lg font-semibold text-gray-900 mb-4">Place New Bid</h4>
-                    <form onSubmit={handlePersonalBidSubmit} className="space-y-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Your Bid Amount *
-                        </label>
-                        <div className="relative">
-                          <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-                          <input
-                            type="text"
-                            value={bidAmount}
-                            onChange={(e) => {
-                              const formatted = formatCurrencyInput(e.target.value);
-                              setBidAmount(formatted);
-                            }}
-                            placeholder="Enter bid amount"
-                            className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                            required
-                            disabled={submittingBid || isProcessing}
-                          />
-                        </div>
-                        <p className="text-xs text-gray-500 mt-1">
-                          Minimum bid: {formatCurrency(currentBid + MIN_BID_INCREMENT)}
-                        </p>
-                      </div>
-                      
-                      <button
-                        type="submit"
-                        disabled={submittingBid || isProcessing}
-                        className="w-full bg-emerald-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-emerald-700 transition-colors flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {submittingBid || isProcessing ? (
-                          <>
-                            <Loader2 className="h-5 w-5 animate-spin" />
-                            <span>Submitting Bid...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Gavel className="h-5 w-5" />
-                            <span>Place New Bid</span>
-                          </>
-                        )}
-                      </button>
-                    </form>
-                  </div>
                 </div>
               )}
             </div>

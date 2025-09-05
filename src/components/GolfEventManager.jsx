@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Clock, MapPin, Trophy, Users, Coffee, Camera, Download, Edit, Plus, X, Eye, EyeOff, Trash2, Gift, Settings, Lock, Unlock, Save, Gavel } from 'lucide-react';
 import { db, supabase } from '../lib/supabase';
 
-const GolfEventManager = ({ onNavigateToAuction }) => {
+const GolfEventManager = () => {
+  const navigate = useNavigate();
   const [currentTime, setCurrentTime] = useState(new Date());
   const [nextEventIndex, setNextEventIndex] = useState(0);
   const [isAdminMode, setIsAdminMode] = useState(false);
@@ -1152,17 +1154,15 @@ const GolfEventManager = ({ onNavigateToAuction }) => {
             {activeTab === 'auction' && (
               <div className="space-y-8">
                 {/* View Item Button */}
-                {onNavigateToAuction && (
-                  <div className="text-center">
-                    <button
-                      onClick={onNavigateToAuction}
-                      className="flex items-center gap-2 bg-purple-600 text-white px-6 py-3 rounded-lg shadow-lg hover:bg-purple-700 transition-colors mx-auto"
-                    >
-                      <Gavel className="w-5 h-5" />
-                      View Item
-                    </button>
-                  </div>
-                )}
+                <div className="text-center">
+                  <button
+                    onClick={() => navigate('/auction')}
+                    className="flex items-center gap-2 bg-purple-600 text-white px-6 py-3 rounded-lg shadow-lg hover:bg-purple-700 transition-colors mx-auto"
+                  >
+                    <Gavel className="w-5 h-5" />
+                    View Item
+                  </button>
+                </div>
 
                 {/* Painting Information */}
                 {painting && (
@@ -2085,15 +2085,13 @@ const GolfEventManager = ({ onNavigateToAuction }) => {
         
         {/* Admin Controls - Moved to Bottom */}
         <div className="mt-6 flex justify-center gap-3">
-          {onNavigateToAuction && (
-            <button
-              onClick={onNavigateToAuction}
-              className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg shadow-lg hover:bg-purple-700 transition-colors"
-            >
-              <Gavel className="w-4 h-4" />
-              Live Auction
-            </button>
-          )}
+          <button
+            onClick={() => navigate('/auction')}
+            className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg shadow-lg hover:bg-purple-700 transition-colors"
+          >
+            <Gavel className="w-4 h-4" />
+            Live Auction
+          </button>
           {!isAdminMode ? (
             <button
               onClick={() => setShowPasswordModal(true)}

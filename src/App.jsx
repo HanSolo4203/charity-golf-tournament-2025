@@ -1,24 +1,18 @@
-import React, { useState } from 'react'
+import React from 'react'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import GolfEventManager from './components/GolfEventManager'
 import AuctionBidding from './components/AuctionBidding'
 
 function App() {
-  const [currentPage, setCurrentPage] = useState('golf')
-
-  const renderPage = () => {
-    switch (currentPage) {
-      case 'golf':
-        return <GolfEventManager onNavigateToAuction={() => setCurrentPage('auction')} />
-      case 'auction':
-        return <AuctionBidding onBack={() => setCurrentPage('golf')} />
-      default:
-        return <GolfEventManager onNavigateToAuction={() => setCurrentPage('auction')} />
-    }
-  }
-
   return (
     <div className="App">
-      {renderPage()}
+      <Routes>
+        <Route path="/" element={<GolfEventManager />} />
+        <Route path="/golf" element={<GolfEventManager />} />
+        <Route path="/auction" element={<AuctionBidding />} />
+        <Route path="/auction/:paintingId" element={<AuctionBidding />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
     </div>
   )
 }

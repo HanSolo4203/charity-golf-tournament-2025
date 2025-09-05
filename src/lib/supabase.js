@@ -226,13 +226,18 @@ export const db = {
   },
 
   async createBid(bidData) {
+    console.log('Creating bid in database with data:', bidData);
     const { data, error } = await supabase
       .from('bids')
       .insert(bidData)
       .select()
       .single()
     
-    if (error) throw error
+    if (error) {
+      console.error('Error creating bid:', error);
+      throw error;
+    }
+    console.log('Bid created successfully:', data);
     return data
   },
 
