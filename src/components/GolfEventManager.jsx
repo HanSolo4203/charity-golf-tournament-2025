@@ -748,7 +748,7 @@ const GolfEventManager = ({ onNavigateToAuction }) => {
             <img 
               src={organizationSettings.organization_logo_url || "https://via.placeholder.com/480x160/0f172a/ffffff?text=YOUR+LOGO"} 
               alt="Organization Logo" 
-              className="mx-auto h-32 w-auto object-contain"
+              className="mx-auto h-64 w-auto object-contain"
             />
             
             {/* Organization Logo Upload (Admin Only) */}
