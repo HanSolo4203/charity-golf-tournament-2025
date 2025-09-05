@@ -201,6 +201,7 @@ export const db = {
       .select('*')
       .eq('painting_id', paintingId)
       .order('bid_amount', { ascending: false })
+      .order('created_at', { ascending: true }) // For ties, earliest bid wins
     
     if (error) throw error
     return data || []
@@ -212,6 +213,7 @@ export const db = {
       .select('*')
       .eq('painting_id', paintingId)
       .order('bid_amount', { ascending: false })
+      .order('created_at', { ascending: true }) // For ties, earliest bid wins
       .limit(1)
       .single()
     

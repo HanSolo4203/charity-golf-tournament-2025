@@ -1035,19 +1035,6 @@ const GolfEventManager = () => {
                         {/* Expandable Content */}
                         {expandedEvents.has(event.id) && (
                           <div className="mt-4 pt-4 border-t border-slate-200 space-y-3">
-                            <div>
-                              <h4 className={`font-semibold mb-2 ${
-                                isActive ? 'text-white' :
-                                isPast ? 'text-slate-500' :
-                                'text-slate-800'
-                              }`}>Additional Information</h4>
-                              <p className={`text-sm leading-relaxed ${
-                                isActive ? 'text-slate-200' :
-                                isPast ? 'text-slate-400' :
-                                'text-slate-600'
-                              }`}>{event.additional_info}</p>
-                            </div>
-                            
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                               <div>
                                 <h4 className={`font-semibold mb-1 ${
@@ -1153,14 +1140,14 @@ const GolfEventManager = () => {
             {/* Auction Tab Content */}
             {activeTab === 'auction' && (
               <div className="space-y-8">
-                {/* View Item Button */}
+                {/* Bid on Item Button */}
                 <div className="text-center">
                   <button
                     onClick={() => navigate('/auction')}
                     className="flex items-center gap-2 bg-purple-600 text-white px-6 py-3 rounded-lg shadow-lg hover:bg-purple-700 transition-colors mx-auto"
                   >
                     <Gavel className="w-5 h-5" />
-                    View Item
+                    Bid on Item
                   </button>
                 </div>
 

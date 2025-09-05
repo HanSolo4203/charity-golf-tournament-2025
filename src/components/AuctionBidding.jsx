@@ -34,6 +34,10 @@ const AuctionBidding = () => {
   const [currentBidder, setCurrentBidder] = useState(null);
   const [personalBids, setPersonalBids] = useState([]);
   const [loadingPersonalBids, setLoadingPersonalBids] = useState(false);
+  
+  // Confirmation dialog state
+  const [showBidConfirmation, setShowBidConfirmation] = useState(false);
+  const [pendingBidData, setPendingBidData] = useState(null);
 
   // Session persistence helpers
   const saveBidderSession = useCallback((bidder) => {
@@ -287,25 +291,57 @@ const AuctionBidding = () => {
       return;
     }
 
+    // Prepare bid data for confirmation
+    const bidData = {
+      painting_id: actualPaintingId,
+      bidder_name: currentBidder.bidder_name,
+      bidder_email: currentBidder.bidder_email,
+      bidder_phone: currentBidder.bidder_phone,
+      bid_amount: parseFloat(bidAmount)
+    };
+
+    // Show confirmation dialog
+    setPendingBidData(bidData);
+    setShowBidConfirmation(true);
+  };
+
+  // Function to actually submit the personal bid after confirmation
+  const confirmPersonalBidSubmission = async () => {
+    if (!pendingBidData || !currentBidder) return;
+
     setSubmittingBid(true);
     setError(null);
     setFormErrors({});
 
     try {
-      const bidData = {
-        painting_id: actualPaintingId,
-        bidder_name: currentBidder.bidder_name,
-        bidder_email: currentBidder.bidder_email,
-        bidder_phone: currentBidder.bidder_phone,
-        bid_amount: parseFloat(bidAmount)
-      };
-
-      await db.submitBid(bidData);
+      const newBid = await db.submitBid(pendingBidData);
       
-      setSuccess('Bid submitted successfully!');
-      setBidAmount('');
       setLastSubmissionTime(Date.now());
       setSubmissionCount(prev => prev + 1);
+      
+      // Fetch the actual highest bid from database to handle ties properly
+      const highestBid = await db.getHighestBid(actualPaintingId);
+      if (highestBid) {
+        // Check if our bid is actually the highest (considering ties)
+        const isOurBidHighest = highestBid.id === newBid.id;
+        
+        if (isOurBidHighest) {
+          // Trigger animation
+          setBidAnimation(true);
+          setTimeout(() => setBidAnimation(false), BID_ANIMATION_DURATION);
+          
+          setSuccess('🎉 Bid submitted successfully! You are now the highest bidder!');
+        } else {
+          setSuccess('✅ Bid submitted successfully!');
+        }
+      } else {
+        setSuccess('✅ Bid submitted successfully!');
+      }
+      
+      // Clear success message after 5 seconds
+      setTimeout(() => setSuccess(null), 5000);
+      
+      setBidAmount('');
       
       // Reload data
       await Promise.all([
@@ -314,15 +350,18 @@ const AuctionBidding = () => {
         loadPersonalBids(currentBidder.bidder_email, currentBidder.bidder_phone)
       ]);
       
-      // Trigger animation
-      setBidAnimation(true);
-      setTimeout(() => setBidAnimation(false), BID_ANIMATION_DURATION);
+      // Close confirmation dialog
+      setShowBidConfirmation(false);
+      setPendingBidData(null);
       
     } catch (err) {
       console.error('Error submitting bid:', err);
       setError('Failed to submit bid. Please try again.');
     } finally {
       setSubmittingBid(false);
+      // Close confirmation dialog on error
+      setShowBidConfirmation(false);
+      setPendingBidData(null);
     }
   };
 
@@ -532,7 +571,7 @@ const AuctionBidding = () => {
           table: 'bids',
           filter: `painting_id=eq.${actualPaintingId}`
         },
-        (payload) => {
+        async (payload) => {
           console.log('New bid received via real-time:', payload);
           const newBid = payload.new;
           
@@ -542,30 +581,37 @@ const AuctionBidding = () => {
             return;
           }
           
-          // Animate bid update
-          setBidAnimation(true);
-          setTimeout(() => setBidAnimation(false), BID_ANIMATION_DURATION);
-          
-          // Update current bid immediately if higher
-          setCurrentBid(prevBid => {
-            console.log('Updating current bid from', prevBid, 'to', newBid.bid_amount);
-            if (newBid.bid_amount > prevBid) {
-              return newBid.bid_amount;
+          // Fetch the actual highest bid from database to handle ties properly
+          try {
+            const highestBid = await db.getHighestBid(actualPaintingId);
+            if (highestBid) {
+              console.log('Updated highest bid from database:', highestBid);
+              
+              // Check if this is actually a new highest bid
+              const isNewHighest = highestBid.id === newBid.id;
+              
+              if (isNewHighest) {
+                // Animate bid update
+                setBidAnimation(true);
+                setTimeout(() => setBidAnimation(false), BID_ANIMATION_DURATION);
+                
+                // Update current bid
+                setCurrentBid(highestBid.bid_amount);
+                
+                // Show success message
+                setSuccess(`New bid of ${formatCurrency(highestBid.bid_amount)} from ${highestBid.bidder_name}!`);
+                setTimeout(() => setSuccess(null), 5000);
+              }
             }
-            return prevBid;
-          });
-          
-          // Add to bid history
-          setBidHistory(prev => [newBid, ...prev.slice(0, 9)]);
-          
-          // Refresh personal bids if we have a current bidder
-          if (currentBidder) {
-            loadPersonalBids(currentBidder.bidder_email, currentBidder.bidder_phone);
+            
+            // Always refresh bid history and personal bids to show latest data
+            loadBidHistory();
+            if (currentBidder) {
+              loadPersonalBids(currentBidder.bidder_email, currentBidder.bidder_phone);
+            }
+          } catch (error) {
+            console.error('Error fetching highest bid after real-time update:', error);
           }
-          
-          // Show success message
-          setSuccess(`New bid of ${formatCurrency(newBid.bid_amount)} from ${newBid.bidder_name}!`);
-          setTimeout(() => setSuccess(null), 5000);
         }
       )
       .subscribe((status) => {
@@ -608,47 +654,65 @@ const AuctionBidding = () => {
       return;
     }
 
+    // Sanitize all inputs before showing confirmation
+    const sanitizedBidData = {
+      bidder_name: sanitizeInput(bidderName.trim()),
+      bidder_email: sanitizeInput(bidderEmail.trim()),
+      bidder_phone: sanitizeInput(bidderPhone.trim()),
+      bid_amount: parseFloat(sanitizeInput(bidAmount)),
+      painting_id: actualPaintingId
+    };
+
+    // Show confirmation dialog
+    setPendingBidData(sanitizedBidData);
+    setShowBidConfirmation(true);
+  };
+
+  // Function to actually submit the bid after confirmation
+  const confirmBidSubmission = async () => {
+    if (!pendingBidData) return;
+
     try {
       setIsProcessing(true);
       setSubmittingBid(true);
 
-      // Sanitize all inputs before sending to server
-      const sanitizedBidData = {
-        bidder_name: sanitizeInput(bidderName.trim()),
-        bidder_email: sanitizeInput(bidderEmail.trim()),
-        bidder_phone: sanitizeInput(bidderPhone.trim()),
-        bid_amount: parseFloat(sanitizeInput(bidAmount)),
-        painting_id: actualPaintingId
-      };
-
-      console.log('Submitting bid with data:', sanitizedBidData);
+      console.log('Submitting bid with data:', pendingBidData);
 
       // Additional server-side validation
-      if (sanitizedBidData.bid_amount <= currentBid) {
+      if (pendingBidData.bid_amount <= currentBid) {
         throw new Error('Bid amount must be higher than current bid');
       }
 
-      if (sanitizedBidData.bid_amount < currentBid + MIN_BID_INCREMENT) {
+      if (pendingBidData.bid_amount < currentBid + MIN_BID_INCREMENT) {
         throw new Error('Bid amount must meet minimum increment requirement');
       }
 
-      const newBid = await db.createBid(sanitizedBidData);
+      const newBid = await db.createBid(pendingBidData);
       
       // Update rate limiting
       setLastSubmissionTime(Date.now());
       setSubmissionCount(prev => prev + 1);
       
-      // Immediately update current bid locally
-      setCurrentBid(sanitizedBidData.bid_amount);
+      // Fetch the actual highest bid from database to handle ties properly
+      const highestBid = await db.getHighestBid(actualPaintingId);
+      if (highestBid) {
+        // Check if our bid is actually the highest (considering ties)
+        const isOurBidHighest = highestBid.id === newBid.id;
+        
+        if (isOurBidHighest) {
+          // Animate the bid update
+          setBidAnimation(true);
+          setTimeout(() => setBidAnimation(false), BID_ANIMATION_DURATION);
+          
+          // Update current bid
+          setCurrentBid(highestBid.bid_amount);
+        } else {
+          // Our bid was not the highest (tie was won by earlier bid)
+          console.log('Bid submitted but not highest due to tie resolution');
+        }
+      }
       
-      // Animate the bid update
-      setBidAnimation(true);
-      setTimeout(() => setBidAnimation(false), BID_ANIMATION_DURATION);
-      
-      // Add to bid history immediately
-      setBidHistory(prev => [newBid, ...prev.slice(0, 9)]);
-      
-      // Refresh data from database to ensure accuracy (in background)
+      // Refresh data from database to ensure accuracy
       loadPaintingData();
       loadBidHistory();
       
@@ -660,15 +724,23 @@ const AuctionBidding = () => {
       
       // Set current bidder for "Your Bids" tab
       const newBidder = {
-        bidder_name: sanitizedBidData.bidder_name,
-        bidder_email: sanitizedBidData.bidder_email,
-        bidder_phone: sanitizedBidData.bidder_phone
+        bidder_name: pendingBidData.bidder_name,
+        bidder_email: pendingBidData.bidder_email,
+        bidder_phone: pendingBidData.bidder_phone
       };
       setCurrentBidder(newBidder);
       saveBidderSession(newBidder);
       
+      // Close confirmation dialog
+      setShowBidConfirmation(false);
+      setPendingBidData(null);
+      
       // Show success message
-      setSuccess(`🎉 Congratulations! Your bid of ${formatCurrency(sanitizedBidData.bid_amount)} has been submitted successfully! You are now the highest bidder.`);
+      if (highestBid && highestBid.id === newBid.id) {
+        setSuccess(`🎉 Congratulations! Your bid of ${formatCurrency(pendingBidData.bid_amount)} has been submitted successfully! You are now the highest bidder.`);
+      } else {
+        setSuccess(`✅ Your bid of ${formatCurrency(pendingBidData.bid_amount)} has been submitted successfully!`);
+      }
       setTimeout(() => setSuccess(null), 10000);
       
     } catch (err) {
@@ -693,6 +765,9 @@ const AuctionBidding = () => {
     } finally {
       setIsProcessing(false);
       setSubmittingBid(false);
+      // Close confirmation dialog on error
+      setShowBidConfirmation(false);
+      setPendingBidData(null);
     }
   };
 
@@ -1591,6 +1666,63 @@ const AuctionBidding = () => {
           </div>
         </div>
       </div>
+
+      {/* Bid Confirmation Dialog */}
+      {showBidConfirmation && pendingBidData && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-2xl">
+            <div className="text-center">
+              <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-yellow-100 mb-4">
+                <Gavel className="h-6 w-6 text-yellow-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Confirm Your Bid</h3>
+              <p className="text-sm text-gray-600 mb-4">
+                Are you sure you want to place a bid of:
+              </p>
+              <div className="text-2xl font-bold text-emerald-600 mb-4">
+                {formatCurrency(pendingBidData.bid_amount)}
+              </div>
+              <p className="text-sm text-gray-600 mb-6">
+                This bid will be recorded in the database and cannot be undone.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowBidConfirmation(false);
+                    setPendingBidData(null);
+                  }}
+                  className="flex-1 bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    if (currentBidder) {
+                      confirmPersonalBidSubmission();
+                    } else {
+                      confirmBidSubmission();
+                    }
+                  }}
+                  disabled={submittingBid || isProcessing}
+                  className="flex-1 bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 transition-colors flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {submittingBid || isProcessing ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span>Submitting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Gavel className="h-4 w-4" />
+                      <span>Confirm Bid</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
