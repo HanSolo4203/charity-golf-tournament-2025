@@ -177,7 +177,7 @@ const [activeTab, setActiveTab] = useState('events');
 - Database filter: `painting_id=eq.1`
 
 ### Currency Formatting
-- South African Rand (ZAR)
+- Malawian Kwacha (MWK)
 - No decimal places for whole amounts
 - Consistent formatting across all displays
 

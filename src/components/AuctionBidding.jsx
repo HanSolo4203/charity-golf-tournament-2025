@@ -20,10 +20,15 @@ const AuctionBidding = ({ onBack, paintingId = 1 }) => {
   const [submissionCount, setSubmissionCount] = useState(0);
   
   // Tab system state
-  const [activeTab, setActiveTab] = useState('new'); // 'new' or 'returning'
+  const [activeTab, setActiveTab] = useState('new'); // 'new', 'returning', or 'your-bids'
   const [returningBidder, setReturningBidder] = useState(null);
   const [searchingBidder, setSearchingBidder] = useState(false);
   const [bidderNotFound, setBidderNotFound] = useState(false);
+  
+  // Your Bids tab state
+  const [currentBidder, setCurrentBidder] = useState(null);
+  const [personalBids, setPersonalBids] = useState([]);
+  const [loadingPersonalBids, setLoadingPersonalBids] = useState(false);
   
   // Form state
   const [bidAmount, setBidAmount] = useState('');
@@ -157,6 +162,74 @@ const AuctionBidding = ({ onBack, paintingId = 1 }) => {
       setBidHistory(bids);
     } catch (err) {
       console.error('Error loading bid history:', err);
+    }
+  };
+
+  const loadPersonalBids = async (bidderEmail, bidderPhone) => {
+    try {
+      setLoadingPersonalBids(true);
+      const bids = await db.getBidsByBidder(paintingId, bidderEmail, bidderPhone);
+      setPersonalBids(bids);
+    } catch (err) {
+      console.error('Error loading personal bids:', err);
+      setError('Failed to load your bids. Please try again.');
+    } finally {
+      setLoadingPersonalBids(false);
+    }
+  };
+
+  const handlePersonalBidSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (!currentBidder) {
+      setError('Please identify yourself first');
+      return;
+    }
+
+    if (!checkRateLimit()) return;
+
+    const errors = validateForm();
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      return;
+    }
+
+    setSubmittingBid(true);
+    setError(null);
+    setFormErrors({});
+
+    try {
+      const bidData = {
+        painting_id: paintingId,
+        bidder_name: currentBidder.bidder_name,
+        bidder_email: currentBidder.bidder_email,
+        bidder_phone: currentBidder.bidder_phone,
+        bid_amount: parseFloat(bidAmount)
+      };
+
+      await db.submitBid(bidData);
+      
+      setSuccess('Bid submitted successfully!');
+      setBidAmount('');
+      setLastSubmissionTime(Date.now());
+      setSubmissionCount(prev => prev + 1);
+      
+      // Reload data
+      await Promise.all([
+        loadPaintingData(),
+        loadBidHistory(),
+        loadPersonalBids(currentBidder.bidder_email, currentBidder.bidder_phone)
+      ]);
+      
+      // Trigger animation
+      setBidAnimation(true);
+      setTimeout(() => setBidAnimation(false), BID_ANIMATION_DURATION);
+      
+    } catch (err) {
+      console.error('Error submitting bid:', err);
+      setError('Failed to submit bid. Please try again.');
+    } finally {
+      setSubmittingBid(false);
     }
   };
 
@@ -352,7 +425,7 @@ const AuctionBidding = ({ onBack, paintingId = 1 }) => {
           table: 'bids',
           filter: `painting_id=eq.${paintingId}`
         },
-        (payload) => {
+        async (payload) => {
           console.log('New bid received:', payload);
           const newBid = payload.new;
           
@@ -360,13 +433,30 @@ const AuctionBidding = ({ onBack, paintingId = 1 }) => {
           setBidAnimation(true);
           setTimeout(() => setBidAnimation(false), BID_ANIMATION_DURATION);
           
-          // Update current bid if this is higher
-          if (newBid.bid_amount > currentBid) {
-            setCurrentBid(newBid.bid_amount);
+          // Refresh all data to ensure accuracy
+          try {
+            // Get the actual highest bid from database
+            const highestBid = await db.getHighestBid(paintingId);
+            if (highestBid) {
+              setCurrentBid(highestBid.bid_amount);
+            }
+            
+            // Reload bid history
+            const updatedBidHistory = await db.getBidHistory(paintingId, 10);
+            setBidHistory(updatedBidHistory);
+            
+            // If we have a current bidder, refresh their personal bids
+            if (currentBidder) {
+              await loadPersonalBids(currentBidder.bidder_email, currentBidder.bidder_phone);
+            }
+          } catch (error) {
+            console.error('Error refreshing bid data:', error);
+            // Fallback to simple update
+            if (newBid.bid_amount > currentBid) {
+              setCurrentBid(newBid.bid_amount);
+            }
+            setBidHistory(prev => [newBid, ...prev.slice(0, 9)]);
           }
-          
-          // Add to bid history with animation
-          setBidHistory(prev => [newBid, ...prev.slice(0, 9)]);
           
           // Show success message
           setSuccess(`New bid of ${formatCurrency(newBid.bid_amount)} from ${newBid.bidder_name}!`);
@@ -437,17 +527,24 @@ const AuctionBidding = ({ onBack, paintingId = 1 }) => {
       setBidAnimation(true);
       setTimeout(() => setBidAnimation(false), BID_ANIMATION_DURATION);
       
-      // Update current bid
-      setCurrentBid(sanitizedBidData.bid_amount);
-      
-      // Add to bid history
-      setBidHistory(prev => [newBid, ...prev.slice(0, 9)]);
+      // Refresh data from database to ensure accuracy
+      await Promise.all([
+        loadPaintingData(),
+        loadBidHistory()
+      ]);
       
       // Clear form
       setBidAmount('');
       setBidderName('');
       setBidderEmail('');
       setBidderPhone('');
+      
+      // Set current bidder for "Your Bids" tab
+      setCurrentBidder({
+        bidder_name: sanitizedBidData.bidder_name,
+        bidder_email: sanitizedBidData.bidder_email,
+        bidder_phone: sanitizedBidData.bidder_phone
+      });
       
       // Show success message
       setSuccess(`🎉 Congratulations! Your bid of ${formatCurrency(sanitizedBidData.bid_amount)} has been submitted successfully! You are now the highest bidder.`);
@@ -515,14 +612,21 @@ const AuctionBidding = ({ onBack, paintingId = 1 }) => {
       setBidAnimation(true);
       setTimeout(() => setBidAnimation(false), BID_ANIMATION_DURATION);
       
-      // Update current bid
-      setCurrentBid(bidData.bid_amount);
-      
-      // Add to bid history
-      setBidHistory(prev => [newBid, ...prev.slice(0, 9)]);
+      // Refresh data from database to ensure accuracy
+      await Promise.all([
+        loadPaintingData(),
+        loadBidHistory()
+      ]);
       
       // Clear form
       setBidAmount('');
+      
+      // Set current bidder for "Your Bids" tab
+      setCurrentBidder({
+        bidder_name: returningBidder.bidder_name,
+        bidder_email: returningBidder.bidder_email,
+        bidder_phone: returningBidder.bidder_phone
+      });
       
       // Show success message
       setSuccess(`🎉 Welcome back ${returningBidder.bidder_name}! Your bid of ${formatCurrency(bidData.bid_amount)} has been submitted successfully!`);
@@ -538,9 +642,9 @@ const AuctionBidding = ({ onBack, paintingId = 1 }) => {
   };
 
   const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-ZA', {
+    return new Intl.NumberFormat('en-MW', {
       style: 'currency',
-      currency: 'ZAR',
+      currency: 'MWK',
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     }).format(amount);
@@ -779,6 +883,22 @@ const AuctionBidding = ({ onBack, paintingId = 1 }) => {
                   >
                     Returning Bidder
                   </button>
+                  {currentBidder && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveTab('your-bids');
+                        loadPersonalBids(currentBidder.bidder_email, currentBidder.bidder_phone);
+                      }}
+                      className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                        activeTab === 'your-bids'
+                          ? 'border-emerald-500 text-emerald-600'
+                          : 'border-transparent text-gray-500 hover:text-gray-700'
+                      }`}
+                    >
+                      Your Bids
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -1116,6 +1236,142 @@ const AuctionBidding = ({ onBack, paintingId = 1 }) => {
                       </form>
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* Your Bids Tab */}
+              {activeTab === 'your-bids' && currentBidder && (
+                <div className="space-y-6">
+                  {/* Current Bidder Info */}
+                  <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                    <div className="flex items-center space-x-2">
+                      <CheckCircle className="h-5 w-5 text-green-500" />
+                      <div>
+                        <p className="text-green-800 font-medium">Welcome, {currentBidder.bidder_name}!</p>
+                        <p className="text-green-600 text-sm">View your bidding history and place new bids</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Current Highest Bid */}
+                  <div className="bg-white border border-gray-200 rounded-lg p-4">
+                    <h4 className="text-lg font-semibold text-gray-900 mb-3">Current Highest Bid</h4>
+                    <div className="text-center">
+                      <div className="text-3xl font-bold text-emerald-600 mb-2">
+                        {formatCurrency(currentBid)}
+                      </div>
+                      <p className="text-sm text-gray-600">
+                        {personalBids.length > 0 && personalBids[0]?.bid_amount === currentBid 
+                          ? "🏆 You are currently the highest bidder!" 
+                          : "Someone else is currently leading"}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Your Bidding History */}
+                  <div className="bg-white border border-gray-200 rounded-lg p-4">
+                    <h4 className="text-lg font-semibold text-gray-900 mb-4">Your Bidding History</h4>
+                    {loadingPersonalBids ? (
+                      <div className="text-center py-8">
+                        <Loader2 className="h-6 w-6 animate-spin mx-auto text-emerald-600 mb-2" />
+                        <p className="text-gray-600">Loading your bids...</p>
+                      </div>
+                    ) : personalBids.length === 0 ? (
+                      <div className="text-center py-8">
+                        <p className="text-gray-500">No bids found. Place your first bid above!</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {personalBids.map((bid, index) => (
+                          <div 
+                            key={bid.id} 
+                            className={`flex items-center justify-between py-3 px-4 rounded-lg border ${
+                              index === 0 && bid.bid_amount === currentBid
+                                ? 'bg-emerald-50 border-emerald-200'
+                                : 'bg-gray-50 border-gray-200'
+                            }`}
+                          >
+                            <div className="flex items-center space-x-3">
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                                index === 0 && bid.bid_amount === currentBid
+                                  ? 'bg-emerald-200'
+                                  : 'bg-gray-200'
+                              }`}>
+                                <span className={`text-sm font-medium ${
+                                  index === 0 && bid.bid_amount === currentBid
+                                    ? 'text-emerald-700'
+                                    : 'text-gray-700'
+                                }`}>
+                                  {index + 1}
+                                </span>
+                              </div>
+                              <div>
+                                <div className="font-medium text-gray-900">
+                                  {formatCurrency(bid.bid_amount)}
+                                </div>
+                                <div className="text-sm text-gray-500">
+                                  {formatTimeAgo(bid.created_at)}
+                                </div>
+                              </div>
+                            </div>
+                            {index === 0 && bid.bid_amount === currentBid && (
+                              <div className="flex items-center space-x-1 text-emerald-600">
+                                <span className="text-sm font-medium">🏆 Leading</span>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Place New Bid Form */}
+                  <div className="bg-white border border-gray-200 rounded-lg p-4">
+                    <h4 className="text-lg font-semibold text-gray-900 mb-4">Place New Bid</h4>
+                    <form onSubmit={handlePersonalBidSubmit} className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Your Bid Amount *
+                        </label>
+                        <div className="relative">
+                          <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                          <input
+                            type="text"
+                            value={bidAmount}
+                            onChange={(e) => {
+                              const formatted = formatCurrencyInput(e.target.value);
+                              setBidAmount(formatted);
+                            }}
+                            placeholder="Enter bid amount"
+                            className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                            required
+                            disabled={submittingBid || isProcessing}
+                          />
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Minimum bid: {formatCurrency(currentBid + MIN_BID_INCREMENT)}
+                        </p>
+                      </div>
+                      
+                      <button
+                        type="submit"
+                        disabled={submittingBid || isProcessing}
+                        className="w-full bg-emerald-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-emerald-700 transition-colors flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {submittingBid || isProcessing ? (
+                          <>
+                            <Loader2 className="h-5 w-5 animate-spin" />
+                            <span>Submitting Bid...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Gavel className="h-5 w-5" />
+                            <span>Place New Bid</span>
+                          </>
+                        )}
+                      </button>
+                    </form>
+                  </div>
                 </div>
               )}
             </div>

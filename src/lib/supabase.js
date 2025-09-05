@@ -246,5 +246,28 @@ export const db = {
     
     if (error) throw error
     return data || []
+  },
+
+  async getBidsByBidder(paintingId, email, phone) {
+    let query = supabase
+      .from('bids')
+      .select('*')
+      .eq('painting_id', paintingId)
+      .order('created_at', { ascending: false })
+
+    if (email && email.trim()) {
+      query = query.eq('bidder_email', email.trim())
+    } else if (phone && phone.trim()) {
+      query = query.eq('bidder_phone', phone.trim())
+    }
+
+    const { data, error } = await query
+    
+    if (error) throw error
+    return data || []
+  },
+
+  async submitBid(bidData) {
+    return this.createBid(bidData)
   }
 }

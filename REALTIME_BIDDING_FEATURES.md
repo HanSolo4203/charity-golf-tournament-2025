@@ -65,10 +65,10 @@ This document outlines all the enhanced features implemented for the real-time a
 ## 🎨 Visual Enhancements
 
 ### Currency Formatting
-- **South African Rand (ZAR)**: All amounts displayed in proper currency format
+- **Malawian Kwacha (MWK)**: All amounts displayed in proper currency format
 - **Consistent formatting**: Same format used throughout the application
 - **Decimal handling**: No decimal places for whole amounts
-- **Currency symbols**: Proper R symbol for South African Rand
+- **Currency symbols**: Proper MK symbol for Malawian Kwacha
 
 ### Animation Details
 - **Bid amount scaling**: 110% scale with color change on new high bids

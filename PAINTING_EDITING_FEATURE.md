@@ -35,8 +35,8 @@ The painting editing feature provides administrators with the ability to modify 
 - **Condition**: Dropdown with options (Excellent, Very Good, Good, Fair, Poor)
 - **Description**: Textarea for detailed description
 - **Image URL**: URL input for painting image
-- **Starting Bid**: Number input for starting bid amount (ZAR)
-- **Estimated Value**: Number input for estimated value (ZAR)
+- **Starting Bid**: Number input for starting bid amount (MWK)
+- **Estimated Value**: Number input for estimated value (MWK)
 - **Provenance**: Textarea for ownership history
 - **Auction End Date**: DateTime input for auction end
 

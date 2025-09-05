@@ -23,7 +23,7 @@ const GolfEventManager = ({ onNavigateToAuction }) => {
   const [error, setError] = useState(null);
   
   // Auction manager state
-  const [activeTab, setActiveTab] = useState('events'); // 'events', 'raffle', 'auction'
+  const [activeTab, setActiveTab] = useState('events'); // 'events', 'raffle', 'auction', 'admin-settings'
   const [auctionBids, setAuctionBids] = useState([]);
   const [highestBid, setHighestBid] = useState(null);
   const [totalBidders, setTotalBidders] = useState(0);
@@ -706,98 +706,60 @@ const GolfEventManager = ({ onNavigateToAuction }) => {
       )}
 
       {/* Professional Header */}
-      <div className="bg-white shadow-sm border-b border-slate-200">
-        <div className="max-w-4xl mx-auto px-6 py-8">
-          <div className="mb-8 text-center">
-            <img 
-              src={organizationSettings.organization_logo_url || "https://via.placeholder.com/480x160/0f172a/ffffff?text=YOUR+LOGO"} 
-              alt="Organization Logo" 
-              className="mx-auto h-64 w-auto object-contain"
-            />
-            
-            {/* Organization Logo Upload (Admin Only) */}
-            {isAdminMode && (
-              <div className="mt-4 p-4 bg-slate-50 rounded-lg border border-slate-200 max-w-md mx-auto">
-                <h4 className="text-sm font-medium text-slate-700 mb-3">Update Organization Logo</h4>
-                
-                {/* Current Logo Display */}
-                {organizationSettings.organization_logo_url && (
-                  <div className="mb-3 p-2 bg-white rounded border border-slate-200">
-                    <span className="text-xs text-slate-600 block mb-1">Current Logo:</span>
-                    <img 
-                      src={organizationSettings.organization_logo_url} 
-                      alt="Current organization logo"
-                      className="h-12 w-auto object-contain mx-auto"
-                    />
-                  </div>
-                )}
-                
-                {/* Logo Upload Input */}
-                <div className="flex items-center gap-2 mb-3">
-                  <input
-                    id="org-logo-upload"
-                    type="file"
-                    accept="image/*"
-                    onChange={handleOrganizationLogoUpload}
-                    className="flex-1 text-xs text-slate-600 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => document.getElementById('org-logo-upload').click()}
-                    className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-xs font-medium"
-                  >
-                    Browse
-                  </button>
-                </div>
-                
-                {/* Upload Preview */}
-                {organizationLogoUpload && (
-                  <div className="mb-3 p-2 bg-white rounded border border-slate-200">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs text-slate-600">Preview:</span>
-                      <button
-                        type="button"
-                        onClick={removeOrganizationLogo}
-                        className="text-red-600 hover:text-red-800 text-xs font-medium"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                    <img 
-                      src={URL.createObjectURL(organizationLogoUpload)} 
-                      alt="Logo preview"
-                      className="h-12 w-auto object-contain mx-auto"
-                    />
-                  </div>
-                )}
-                
-                {/* Save Button */}
-                {organizationLogoUpload && (
-                  <button
-                    onClick={saveOrganizationLogo}
-                    className="w-full px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors text-sm font-medium"
-                  >
-                    Save Organization Logo
-                  </button>
-                )}
-                
-                <p className="text-xs text-slate-500 mt-2">
-                  Recommended: 480x160px, PNG format with transparent background
-                </p>
+      <div className="bg-white shadow-sm border-b border-slate-200 relative overflow-hidden">
+        {/* Golf Course Background */}
+        <div className="absolute inset-0 opacity-15">
+          <div className="w-full h-full bg-cover bg-center bg-no-repeat" style={{
+            backgroundImage: `url('https://images.unsplash.com/photo-1535131749006-b7f58c99034b?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2070&q=80')`
+          }}></div>
+        </div>
+        <div className="max-w-4xl mx-auto px-6 py-8 relative z-10">
+          {isAdminMode ? (
+            /* Admin Panel Header */
+            <div className="flex items-center justify-between mb-8">
+              <img 
+                src={organizationSettings.organization_logo_url || "https://via.placeholder.com/480x160/0f172a/ffffff?text=YOUR+LOGO"} 
+                alt="Organization Logo" 
+                className="h-20 w-auto object-contain"
+              />
+              <div className="text-center flex-1">
+                <h1 className="text-3xl font-bold text-slate-900 mb-2">Golf Day Admin Panel</h1>
+                <p className="text-lg font-semibold text-blue-600">6th September 2025</p>
               </div>
-            )}
-          </div>
+              <div className="inline-flex items-center gap-3 bg-slate-800 text-white rounded-lg px-6 py-3 shadow-sm">
+                <Clock className="w-5 h-5" />
+                <span className="text-xl font-mono font-semibold">
+                  {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
+            </div>
+          ) : (
+            /* Regular Header */
+            <div className="mb-8 text-center">
+              <img 
+                src={organizationSettings.organization_logo_url || "https://via.placeholder.com/480x160/0f172a/ffffff?text=YOUR+LOGO"} 
+                alt="Organization Logo" 
+                className="mx-auto h-64 w-auto object-contain"
+              />
+            </div>
+          )}
 
           <div className="text-center">
-            <h1 className="text-3xl font-bold text-slate-900 mb-2">Charity Golf Day Itinerary</h1>
-            <p className="text-2xl font-semibold text-blue-600 mb-2">6th September 2025</p>
+            {!isAdminMode && (
+              <>
+                <h1 className="text-3xl font-bold text-slate-900 mb-2">Charity Golf Day Itinerary</h1>
+                <p className="text-2xl font-semibold text-blue-600 mb-2">6th September 2025</p>
+              </>
+            )}
             
-            <div className="inline-flex items-center gap-3 bg-slate-800 text-white rounded-lg px-6 py-3 shadow-sm">
-              <Clock className="w-5 h-5" />
-              <span className="text-xl font-mono font-semibold">
-                {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </span>
-            </div>
+            {!isAdminMode && (
+              <div className="inline-flex items-center gap-3 bg-slate-800 text-white rounded-lg px-6 py-3 shadow-sm">
+                <Clock className="w-5 h-5" />
+                <span className="text-xl font-mono font-semibold">
+                  {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
+            )}
 
             {/* Admin Dashboard Controls */}
             {isAdminMode && (
@@ -903,6 +865,19 @@ const GolfEventManager = ({ onNavigateToAuction }) => {
             <Gavel className="w-4 h-4 inline mr-2" />
             Auction
           </button>
+          {isAdminMode && (
+            <button
+              onClick={() => setActiveTab('admin-settings')}
+              className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'admin-settings'
+                  ? 'border-slate-500 text-slate-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <Settings className="w-4 h-4 inline mr-2" />
+              Admin Settings
+            </button>
+          )}
         </div>
 
         {!isLoading && !error && (
@@ -1217,9 +1192,9 @@ const GolfEventManager = ({ onNavigateToAuction }) => {
                           <div><span className="font-medium">Condition:</span> {painting.condition}</div>
                           <div><span className="font-medium">Starting Bid:</span> 
                             <span className="font-semibold text-emerald-600 ml-1">
-                              {new Intl.NumberFormat('en-ZA', {
+                              {new Intl.NumberFormat('en-MW', {
                                 style: 'currency',
-                                currency: 'ZAR',
+                                currency: 'MWK',
                                 minimumFractionDigits: 0,
                                 maximumFractionDigits: 0,
                               }).format(painting.starting_bid)}
@@ -1227,9 +1202,9 @@ const GolfEventManager = ({ onNavigateToAuction }) => {
                           </div>
                           <div><span className="font-medium">Estimated Value:</span> 
                             <span className="font-semibold text-blue-600 ml-1">
-                              {new Intl.NumberFormat('en-ZA', {
+                              {new Intl.NumberFormat('en-MW', {
                                 style: 'currency',
-                                currency: 'ZAR',
+                                currency: 'MWK',
                                 minimumFractionDigits: 0,
                                 maximumFractionDigits: 0,
                               }).format(painting.estimated_value)}
@@ -1277,9 +1252,9 @@ const GolfEventManager = ({ onNavigateToAuction }) => {
                             {highestBid.bidder_name}
                           </div>
                           <div className="text-2xl font-semibold text-emerald-700 mb-2">
-                            {new Intl.NumberFormat('en-ZA', {
+                            {new Intl.NumberFormat('en-MW', {
                               style: 'currency',
-                              currency: 'ZAR',
+                              currency: 'MWK',
                               minimumFractionDigits: 0,
                               maximumFractionDigits: 0,
                             }).format(highestBid.bid_amount)}
@@ -1303,12 +1278,12 @@ const GolfEventManager = ({ onNavigateToAuction }) => {
                       </div>
                       <div className="bg-white border border-gray-200 rounded-lg p-6 text-center">
                         <div className="text-2xl font-bold text-purple-600">
-                          {highestBid ? new Intl.NumberFormat('en-ZA', {
+                          {highestBid ? new Intl.NumberFormat('en-MW', {
                             style: 'currency',
-                            currency: 'ZAR',
+                            currency: 'MWK',
                             minimumFractionDigits: 0,
                             maximumFractionDigits: 0,
-                          }).format(highestBid.bid_amount) : 'R0'}
+                          }).format(highestBid.bid_amount) : 'MK0'}
                         </div>
                         <div className="text-sm text-gray-600">Highest Bid</div>
                       </div>
@@ -1316,6 +1291,312 @@ const GolfEventManager = ({ onNavigateToAuction }) => {
 
                   </>
                 )}
+              </div>
+            )}
+
+            {/* Admin Settings Tab Content */}
+            {activeTab === 'admin-settings' && (
+              <div className="space-y-8">
+                <div className="text-center">
+                  <h2 className="text-2xl font-bold text-slate-900 mb-2">Admin Settings</h2>
+                  <p className="text-slate-600">Manage system settings and configurations</p>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                  {/* Organization Settings */}
+                  <div className="bg-white border border-slate-200 rounded-lg p-6">
+                    <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                      <Settings className="w-5 h-5" />
+                      Organization Settings
+                    </h3>
+                    
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">
+                          Organization Name
+                        </label>
+                        <input
+                          type="text"
+                          value={organizationSettings.organization_name || ''}
+                          onChange={(e) => setOrganizationSettings(prev => ({
+                            ...prev,
+                            organization_name: e.target.value
+                          }))}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="Enter organization name"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">
+                          Event Date
+                        </label>
+                        <input
+                          type="date"
+                          value={organizationSettings.event_date || ''}
+                          onChange={(e) => setOrganizationSettings(prev => ({
+                            ...prev,
+                            event_date: e.target.value
+                          }))}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">
+                          Contact Email
+                        </label>
+                        <input
+                          type="email"
+                          value={organizationSettings.contact_email || ''}
+                          onChange={(e) => setOrganizationSettings(prev => ({
+                            ...prev,
+                            contact_email: e.target.value
+                          }))}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="contact@organization.com"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">
+                          Contact Phone
+                        </label>
+                        <input
+                          type="tel"
+                          value={organizationSettings.contact_phone || ''}
+                          onChange={(e) => setOrganizationSettings(prev => ({
+                            ...prev,
+                            contact_phone: e.target.value
+                          }))}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="+27 82 123 4567"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">
+                          Organization Logo
+                        </label>
+                        
+                        {/* Current Logo Display */}
+                        {organizationSettings.organization_logo_url && (
+                          <div className="mb-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                            <span className="text-sm text-slate-600 block mb-2">Current Logo:</span>
+                            <img 
+                              src={organizationSettings.organization_logo_url} 
+                              alt="Current organization logo"
+                              className="h-16 w-auto object-contain mx-auto"
+                            />
+                          </div>
+                        )}
+                        
+                        {/* Logo Upload Input */}
+                        <div className="flex items-center gap-2 mb-3">
+                          <input
+                            id="org-logo-upload"
+                            type="file"
+                            accept="image/*"
+                            onChange={handleOrganizationLogoUpload}
+                            className="flex-1 text-sm text-slate-600 file:mr-2 file:py-2 file:px-3 file:rounded file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => document.getElementById('org-logo-upload').click()}
+                            className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-sm font-medium"
+                          >
+                            Browse
+                          </button>
+                        </div>
+                        
+                        {/* Upload Preview */}
+                        {organizationLogoUpload && (
+                          <div className="mb-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-sm text-slate-600">Preview:</span>
+                              <button
+                                type="button"
+                                onClick={removeOrganizationLogo}
+                                className="text-red-600 hover:text-red-800 text-sm font-medium"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                            <img 
+                              src={URL.createObjectURL(organizationLogoUpload)} 
+                              alt="Logo preview"
+                              className="h-16 w-auto object-contain mx-auto"
+                            />
+                          </div>
+                        )}
+                        
+                        {/* Save Logo Button */}
+                        {organizationLogoUpload && (
+                          <button
+                            onClick={saveOrganizationLogo}
+                            className="w-full mb-3 px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors text-sm font-medium"
+                          >
+                            Save Organization Logo
+                          </button>
+                        )}
+                        
+                        <p className="text-xs text-slate-500">
+                          Recommended: 480x160px, PNG format with transparent background
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={async () => {
+                        try {
+                          // Save organization settings to database
+                          for (const [key, value] of Object.entries(organizationSettings)) {
+                            if (value) {
+                              await db.updateOrganizationSetting(key, value);
+                            }
+                          }
+                          alert('Organization settings saved successfully!');
+                        } catch (err) {
+                          console.error('Error saving organization settings:', err);
+                          alert('Failed to save settings. Please try again.');
+                        }
+                      }}
+                      className="w-full mt-4 flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                      <Save className="w-4 h-4" />
+                      Save Organization Settings
+                    </button>
+                  </div>
+
+                  {/* System Settings */}
+                  <div className="bg-white border border-slate-200 rounded-lg p-6">
+                    <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                      <Lock className="w-5 h-5" />
+                      System Settings
+                    </h3>
+                    
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                        <div>
+                          <h4 className="font-medium text-slate-900">Admin Mode</h4>
+                          <p className="text-sm text-slate-600">Currently {isAdminMode ? 'enabled' : 'disabled'}</p>
+                        </div>
+                        <div className={`px-3 py-1 rounded-full text-xs font-medium ${
+                          isAdminMode 
+                            ? 'bg-green-100 text-green-800' 
+                            : 'bg-slate-100 text-slate-600'
+                        }`}>
+                          {isAdminMode ? 'Active' : 'Inactive'}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                        <div>
+                          <h4 className="font-medium text-slate-900">Database Connection</h4>
+                          <p className="text-sm text-slate-600">Supabase connection status</p>
+                        </div>
+                        <div className="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                          Connected
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                        <div>
+                          <h4 className="font-medium text-slate-900">Real-time Updates</h4>
+                          <p className="text-sm text-slate-600">Live auction updates enabled</p>
+                        </div>
+                        <div className="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                          Enabled
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-6 space-y-3">
+                      <button
+                        onClick={loadData}
+                        className="w-full flex items-center justify-center gap-2 bg-slate-600 text-white px-4 py-2 rounded-lg hover:bg-slate-700 transition-colors"
+                      >
+                        <Download className="w-4 h-4" />
+                        Refresh Data
+                      </button>
+                      
+                      <button
+                        onClick={() => {
+                          if (confirm('Are you sure you want to clear all cached data?')) {
+                            // Clear local state and reload
+                            setEvents([]);
+                            setRaffleItems([]);
+                            setAuctionBids([]);
+                            loadData();
+                            alert('Cache cleared and data refreshed!');
+                          }
+                        }}
+                        className="w-full flex items-center justify-center gap-2 bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Clear Cache
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Quick Actions */}
+                <div className="bg-white border border-slate-200 rounded-lg p-6">
+                  <h3 className="text-lg font-semibold text-slate-900 mb-4">Quick Actions</h3>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <button
+                      onClick={() => {
+                        const content = generatePDFContent();
+                        const blob = new Blob([content], { type: 'text/html' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = 'Charity_Golf_Day_Itinerary.html';
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      }}
+                      className="flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                      <Download className="w-4 h-4" />
+                      Export Itinerary
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        const auctionData = {
+                          painting,
+                          bids: auctionBids,
+                          highestBid,
+                          totalBidders
+                        };
+                        const blob = new Blob([JSON.stringify(auctionData, null, 2)], { type: 'application/json' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = 'auction_data.json';
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      }}
+                      className="flex items-center justify-center gap-2 bg-purple-600 text-white px-4 py-3 rounded-lg hover:bg-purple-700 transition-colors"
+                    >
+                      <Download className="w-4 h-4" />
+                      Export Auction Data
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        if (confirm('Are you sure you want to exit admin mode?')) {
+                          handleAdminLogout();
+                        }
+                      }}
+                      className="flex items-center justify-center gap-2 bg-red-600 text-white px-4 py-3 rounded-lg hover:bg-red-700 transition-colors"
+                    >
+                      <Lock className="w-4 h-4" />
+                      Exit Admin Mode
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </>
@@ -1732,7 +2013,7 @@ const GolfEventManager = ({ onNavigateToAuction }) => {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium mb-2">Starting Bid (ZAR)</label>
+                    <label className="block text-sm font-medium mb-2">Starting Bid (MWK)</label>
                     <input
                       type="number"
                       value={editingPainting.starting_bid || ''}
@@ -1742,7 +2023,7 @@ const GolfEventManager = ({ onNavigateToAuction }) => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-2">Estimated Value (ZAR)</label>
+                    <label className="block text-sm font-medium mb-2">Estimated Value (MWK)</label>
                     <input
                       type="number"
                       value={editingPainting.estimated_value || ''}
