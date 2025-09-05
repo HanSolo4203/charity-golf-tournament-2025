@@ -11,6 +11,7 @@ const AuctionBidding = () => {
   const [currentBid, setCurrentBid] = useState(0);
   const [bidHistory, setBidHistory] = useState([]);
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+  const [isAuctionEnded, setIsAuctionEnded] = useState(false);
   const [isWatching, setIsWatching] = useState(false);
   const [loading, setLoading] = useState(true);
   const [submittingBid, setSubmittingBid] = useState(false);
@@ -154,6 +155,9 @@ const AuctionBidding = () => {
     
     // Fallback polling mechanism in case real-time doesn't work
     const pollInterval = setInterval(async () => {
+      // Don't poll if auction has ended
+      if (isAuctionEnded) return;
+      
       try {
         const highestBid = await db.getHighestBid(actualPaintingId);
         if (highestBid && highestBid.bid_amount > currentBid) {
@@ -170,7 +174,7 @@ const AuctionBidding = () => {
     return () => {
       clearInterval(pollInterval);
     };
-  }, [actualPaintingId, currentBid, loadBidderSession]);
+  }, [actualPaintingId, currentBid, loadBidderSession, isAuctionEnded]);
 
   // Countdown timer
   useEffect(() => {
@@ -178,7 +182,23 @@ const AuctionBidding = () => {
 
     const timer = setInterval(() => {
       const now = new Date().getTime();
-      const endTime = new Date(painting.auction_end).getTime();
+      
+      // For Johannesburg time zone (UTC+2), we need to handle the timezone conversion
+      // If the auction_end is stored in UTC but should be interpreted as Johannesburg time
+      let endTime;
+      
+      if (painting.auction_end.endsWith('Z')) {
+        // The time is stored in UTC, but we want to treat it as Johannesburg local time
+        // So we need to convert from UTC to Johannesburg time
+        // Johannesburg is UTC+2, so we add 2 hours to the UTC time
+        const utcTime = new Date(painting.auction_end).getTime();
+        const johannesburgOffset = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
+        endTime = utcTime + johannesburgOffset;
+      } else {
+        // If it's already in local time format, use it as is
+        endTime = new Date(painting.auction_end).getTime();
+      }
+      
       const distance = endTime - now;
 
       if (distance > 0) {
@@ -188,8 +208,10 @@ const AuctionBidding = () => {
           minutes: Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60)),
           seconds: Math.floor((distance % (1000 * 60)) / 1000)
         });
+        setIsAuctionEnded(false);
       } else {
         setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+        setIsAuctionEnded(true);
       }
     }, 1000);
 
@@ -245,6 +267,12 @@ const AuctionBidding = () => {
 
   const handlePersonalBidSubmit = async (e) => {
     e.preventDefault();
+    
+    // Check if auction has ended
+    if (isAuctionEnded) {
+      setError('❌ This auction has ended. No more bids can be placed.');
+      return;
+    }
     
     if (!currentBidder) {
       setError('Please identify yourself first');
@@ -508,6 +536,12 @@ const AuctionBidding = () => {
           console.log('New bid received via real-time:', payload);
           const newBid = payload.new;
           
+          // Don't process new bids if auction has ended
+          if (isAuctionEnded) {
+            console.log('Auction has ended, ignoring new bid');
+            return;
+          }
+          
           // Animate bid update
           setBidAnimation(true);
           setTimeout(() => setBidAnimation(false), BID_ANIMATION_DURATION);
@@ -545,6 +579,12 @@ const AuctionBidding = () => {
 
   const handleBidSubmit = async (e) => {
     e.preventDefault();
+    
+    // Check if auction has ended
+    if (isAuctionEnded) {
+      setError('❌ This auction has ended. No more bids can be placed.');
+      return;
+    }
     
     // Prevent duplicate submissions
     if (isProcessing || submittingBid) {
@@ -678,6 +718,30 @@ const AuctionBidding = () => {
     return `${Math.floor(diffInSeconds / 86400)} days ago`;
   };
 
+  const formatAuctionEndTime = (auctionEndString) => {
+    if (!auctionEndString) return 'Not set';
+    
+    let endTime;
+    if (auctionEndString.endsWith('Z')) {
+      // Convert from UTC to Johannesburg time (UTC+2)
+      const utcTime = new Date(auctionEndString).getTime();
+      const johannesburgOffset = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
+      endTime = new Date(utcTime + johannesburgOffset);
+    } else {
+      endTime = new Date(auctionEndString);
+    }
+    
+    return endTime.toLocaleString('en-ZA', {
+      timeZone: 'Africa/Johannesburg',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-amber-50 flex items-center justify-center">
@@ -726,6 +790,12 @@ const AuctionBidding = () => {
                 <Calendar className="h-4 w-4 inline mr-1" />
                 6th September 2025
               </div>
+              {painting?.auction_end && (
+                <div className="text-sm text-emerald-600">
+                  <Clock className="h-4 w-4 inline mr-1" />
+                  Ends: {formatAuctionEndTime(painting.auction_end)}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -802,6 +872,20 @@ const AuctionBidding = () => {
                   <span className="ml-2 font-medium text-green-600">{painting.condition}</span>
                 </div>
               </div>
+              
+              {/* Auction End Time */}
+              <div className="mt-4 pt-4 border-t border-gray-200">
+                <div className="flex items-center space-x-2">
+                  <Clock className="h-4 w-4 text-emerald-600" />
+                  <span className="text-sm text-gray-500">Auction Ends:</span>
+                  <span className="text-sm font-medium text-emerald-600">
+                    {formatAuctionEndTime(painting.auction_end)}
+                  </span>
+                </div>
+                <div className="text-xs text-gray-400 mt-1">
+                  Johannesburg Time (SAST)
+                </div>
+              </div>
             </div>
           </div>
 
@@ -811,9 +895,20 @@ const AuctionBidding = () => {
             <div className="bg-white rounded-2xl shadow-lg p-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-xl font-bold text-gray-900">Current Bid</h3>
-                <div className="flex items-center space-x-2 text-emerald-600">
-                  <Gavel className="h-5 w-5" />
-                  <span className="font-medium">Live Auction</span>
+                <div className={`flex items-center space-x-2 ${
+                  isAuctionEnded ? 'text-gray-600' : 'text-emerald-600'
+                }`}>
+                  {isAuctionEnded ? (
+                    <>
+                      <Flag className="h-5 w-5" />
+                      <span className="font-medium">Auction Ended</span>
+                    </>
+                  ) : (
+                    <>
+                      <Gavel className="h-5 w-5" />
+                      <span className="font-medium">Live Auction</span>
+                    </>
+                  )}
                 </div>
               </div>
               
@@ -821,10 +916,15 @@ const AuctionBidding = () => {
                 <div className={`text-4xl font-bold mb-2 transition-all duration-1000 ${
                   bidAnimation ? 'scale-110' : 'scale-100'
                 } ${
-                  hasBeenOutbid ? 'text-red-600' : 'text-emerald-600'
+                  isAuctionEnded ? 'text-gray-600' : hasBeenOutbid ? 'text-red-600' : 'text-emerald-600'
                 }`}>
                   {formatCurrency(currentBid)}
                 </div>
+                {isAuctionEnded && (
+                  <div className="text-lg font-semibold text-gray-600 mb-2">
+                    🏁 Auction Ended - Final Bid
+                  </div>
+                )}
                 {bidAnimation && (
                   <div className="flex items-center justify-center space-x-1 text-emerald-500 mb-2 animate-pulse">
                     <TrendingUp className="h-4 w-4" />
@@ -849,29 +949,47 @@ const AuctionBidding = () => {
               </div>
 
               {/* Countdown Timer */}
-              <div className="bg-gradient-to-r from-emerald-50 to-amber-50 rounded-xl p-4 mb-6">
-                <div className="flex items-center justify-center space-x-2 mb-2">
-                  <Clock className="h-5 w-5 text-emerald-600" />
-                  <span className="font-medium text-gray-900">Auction Ends In:</span>
-                </div>
-                <div className="flex justify-center space-x-4">
+              <div className={`rounded-xl p-4 mb-6 ${
+                isAuctionEnded 
+                  ? 'bg-gradient-to-r from-gray-100 to-gray-200' 
+                  : 'bg-gradient-to-r from-emerald-50 to-amber-50'
+              }`}>
+                {isAuctionEnded ? (
                   <div className="text-center">
-                    <div className="text-2xl font-bold text-emerald-600">{timeLeft.days}</div>
-                    <div className="text-xs text-gray-500">Days</div>
+                    <div className="flex items-center justify-center space-x-2 mb-2">
+                      <Flag className="h-5 w-5 text-gray-600" />
+                      <span className="font-medium text-gray-900">Auction Has Ended</span>
+                    </div>
+                    <div className="text-sm text-gray-600">
+                      Thank you for participating in this auction!
+                    </div>
                   </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-emerald-600">{timeLeft.hours}</div>
-                    <div className="text-xs text-gray-500">Hours</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-emerald-600">{timeLeft.minutes}</div>
-                    <div className="text-xs text-gray-500">Minutes</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-emerald-600">{timeLeft.seconds}</div>
-                    <div className="text-xs text-gray-500">Seconds</div>
-                  </div>
-                </div>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-center space-x-2 mb-2">
+                      <Clock className="h-5 w-5 text-emerald-600" />
+                      <span className="font-medium text-gray-900">Auction Ends In:</span>
+                    </div>
+                    <div className="flex justify-center space-x-4">
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-emerald-600">{timeLeft.days}</div>
+                        <div className="text-xs text-gray-500">Days</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-emerald-600">{timeLeft.hours}</div>
+                        <div className="text-xs text-gray-500">Hours</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-emerald-600">{timeLeft.minutes}</div>
+                        <div className="text-xs text-gray-500">Minutes</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-emerald-600">{timeLeft.seconds}</div>
+                        <div className="text-xs text-gray-500">Seconds</div>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Welcome Card - Only show if user has placed a bid */}
@@ -908,7 +1026,7 @@ const AuctionBidding = () => {
                           placeholder="Enter bid amount"
                           className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                           required
-                          disabled={submittingBid || isProcessing}
+                          disabled={submittingBid || isProcessing || isAuctionEnded}
                         />
                       </div>
                       <p className="text-xs text-gray-500 mt-1">
@@ -918,13 +1036,18 @@ const AuctionBidding = () => {
                     
                     <button
                       type="submit"
-                      disabled={submittingBid || isProcessing}
+                      disabled={submittingBid || isProcessing || isAuctionEnded}
                       className="w-full bg-emerald-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-emerald-700 transition-colors flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {submittingBid || isProcessing ? (
                         <>
                           <Loader2 className="h-5 w-5 animate-spin" />
                           <span>Submitting Bid...</span>
+                        </>
+                      ) : isAuctionEnded ? (
+                        <>
+                          <Flag className="h-5 w-5" />
+                          <span>Auction Ended</span>
                         </>
                       ) : (
                         <>
@@ -934,6 +1057,19 @@ const AuctionBidding = () => {
                       )}
                     </button>
                   </form>
+                </div>
+              )}
+
+              {/* Auction Ended Message */}
+              {isAuctionEnded && (
+                <div className="mb-6 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                  <div className="flex items-center space-x-2">
+                    <Flag className="h-5 w-5 text-gray-500" />
+                    <div>
+                      <p className="text-gray-800 font-medium">Auction Has Ended</p>
+                      <p className="text-gray-600 text-sm">Bidding is no longer available for this auction.</p>
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -1022,7 +1158,7 @@ const AuctionBidding = () => {
                           : 'border-gray-300'
                       }`}
                       required
-                      disabled={submittingBid || isProcessing}
+                      disabled={submittingBid || isProcessing || isAuctionEnded}
                       maxLength={10}
                     />
                   </div>
@@ -1059,7 +1195,7 @@ const AuctionBidding = () => {
                           : 'border-gray-300'
                       }`}
                       required
-                      disabled={submittingBid || isProcessing}
+                      disabled={submittingBid || isProcessing || isAuctionEnded}
                       maxLength={100}
                       pattern="[a-zA-Z\s\-'\.]+"
                       title="Name can only contain letters, spaces, hyphens, apostrophes, and periods"
@@ -1102,7 +1238,7 @@ const AuctionBidding = () => {
                           ? 'border-red-300 bg-red-50' 
                           : 'border-gray-300'
                       }`}
-                      disabled={submittingBid || isProcessing}
+                      disabled={submittingBid || isProcessing || isAuctionEnded}
                       maxLength={254}
                       autoComplete="email"
                       required
@@ -1145,7 +1281,7 @@ const AuctionBidding = () => {
                           ? 'border-red-300 bg-red-50' 
                           : 'border-gray-300'
                       }`}
-                      disabled={submittingBid || isProcessing}
+                      disabled={submittingBid || isProcessing || isAuctionEnded}
                       maxLength={20}
                       autoComplete="tel"
                       required
@@ -1165,13 +1301,18 @@ const AuctionBidding = () => {
 
                 <button
                   type="submit"
-                  disabled={submittingBid || isProcessing}
+                  disabled={submittingBid || isProcessing || isAuctionEnded}
                   className="w-full bg-emerald-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-emerald-700 transition-all duration-200 flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-emerald-600"
                 >
                   {submittingBid || isProcessing ? (
                     <>
                       <Loader2 className="h-5 w-5 animate-spin" />
                       <span>Submitting Bid...</span>
+                    </>
+                  ) : isAuctionEnded ? (
+                    <>
+                      <Flag className="h-5 w-5" />
+                      <span>Auction Ended</span>
                     </>
                   ) : (
                     <>
