@@ -33,6 +33,34 @@ const AuctionBidding = () => {
   const [currentBidder, setCurrentBidder] = useState(null);
   const [personalBids, setPersonalBids] = useState([]);
   const [loadingPersonalBids, setLoadingPersonalBids] = useState(false);
+
+  // Session persistence helpers
+  const saveBidderSession = useCallback((bidder) => {
+    if (bidder) {
+      localStorage.setItem('auction_bidder_session', JSON.stringify(bidder));
+    } else {
+      localStorage.removeItem('auction_bidder_session');
+    }
+  }, []);
+
+  const loadBidderSession = useCallback(() => {
+    try {
+      const savedSession = localStorage.getItem('auction_bidder_session');
+      if (savedSession) {
+        const bidder = JSON.parse(savedSession);
+        return bidder;
+      }
+    } catch (error) {
+      console.error('Error loading bidder session:', error);
+      localStorage.removeItem('auction_bidder_session');
+    }
+    return null;
+  }, []);
+
+  const clearBidderSession = useCallback(() => {
+    localStorage.removeItem('auction_bidder_session');
+    setCurrentBidder(null);
+  }, []);
   
   // Form state
   const [bidAmount, setBidAmount] = useState('');
@@ -115,6 +143,15 @@ const AuctionBidding = () => {
     loadBidHistory();
     setupRealtimeSubscription();
     
+    // Restore bidder session from localStorage
+    const savedBidder = loadBidderSession();
+    if (savedBidder) {
+      setCurrentBidder(savedBidder);
+      setActiveTab('your-bids');
+      // Load personal bids for the restored bidder
+      loadPersonalBids(savedBidder.bidder_email, savedBidder.bidder_phone);
+    }
+    
     // Fallback polling mechanism in case real-time doesn't work
     const pollInterval = setInterval(async () => {
       try {
@@ -133,7 +170,7 @@ const AuctionBidding = () => {
     return () => {
       clearInterval(pollInterval);
     };
-  }, [actualPaintingId, currentBid]);
+  }, [actualPaintingId, currentBid, loadBidderSession]);
 
   // Countdown timer
   useEffect(() => {
@@ -302,20 +339,20 @@ const AuctionBidding = () => {
       }
     }
     
-    // Validate email (optional but if provided, must be valid)
-    if (sanitizedEmail) {
-      if (!validateEmail(sanitizedEmail)) {
-        errors.bidderEmail = 'Please enter a valid email address';
-      } else if (sanitizedEmail.length > 254) {
-        errors.bidderEmail = 'Email address is too long';
-      }
+    // Validate email (required)
+    if (!sanitizedEmail) {
+      errors.bidderEmail = 'Email address is required';
+    } else if (!validateEmail(sanitizedEmail)) {
+      errors.bidderEmail = 'Please enter a valid email address (e.g., john@example.com)';
+    } else if (sanitizedEmail.length > 254) {
+      errors.bidderEmail = 'Email address is too long';
     }
     
-    // Validate phone (optional but if provided, must be valid)
-    if (sanitizedPhone) {
-      if (!validatePhone(sanitizedPhone)) {
-        errors.bidderPhone = 'Please enter a valid phone number (10-15 digits)';
-      }
+    // Validate phone (required)
+    if (!sanitizedPhone) {
+      errors.bidderPhone = 'Phone number is required';
+    } else if (!validatePhone(sanitizedPhone)) {
+      errors.bidderPhone = 'Please enter a valid phone number (10-15 digits)';
     }
     
     // Check for duplicate bids (client-side check)
@@ -370,6 +407,7 @@ const AuctionBidding = () => {
         
         // Set current bidder and switch to "Your Bids" tab
         setCurrentBidder(data);
+        saveBidderSession(data);
         setActiveTab('your-bids');
         
         // Load personal bids for the returning bidder
@@ -537,8 +575,8 @@ const AuctionBidding = () => {
       // Sanitize all inputs before sending to server
       const sanitizedBidData = {
         bidder_name: sanitizeInput(bidderName.trim()),
-        bidder_email: sanitizeInput(bidderEmail.trim()) || null,
-        bidder_phone: sanitizeInput(bidderPhone.trim()) || null,
+        bidder_email: sanitizeInput(bidderEmail.trim()),
+        bidder_phone: sanitizeInput(bidderPhone.trim()),
         bid_amount: parseFloat(sanitizeInput(bidAmount)),
         painting_id: actualPaintingId
       };
@@ -581,11 +619,13 @@ const AuctionBidding = () => {
       setBidderPhone('');
       
       // Set current bidder for "Your Bids" tab
-      setCurrentBidder({
+      const newBidder = {
         bidder_name: sanitizedBidData.bidder_name,
         bidder_email: sanitizedBidData.bidder_email,
         bidder_phone: sanitizedBidData.bidder_phone
-      });
+      };
+      setCurrentBidder(newBidder);
+      saveBidderSession(newBidder);
       
       // Show success message
       setSuccess(`🎉 Congratulations! Your bid of ${formatCurrency(sanitizedBidData.bid_amount)} has been submitted successfully! You are now the highest bidder.`);
@@ -1039,8 +1079,7 @@ const AuctionBidding = () => {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Email Address
-                    <span className="text-gray-400 text-sm font-normal ml-1">(optional)</span>
+                    Email Address *
                   </label>
                   <div className="relative">
                     <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
@@ -1066,6 +1105,7 @@ const AuctionBidding = () => {
                       disabled={submittingBid || isProcessing}
                       maxLength={254}
                       autoComplete="email"
+                      required
                     />
                   </div>
                   {formErrors.bidderEmail ? (
@@ -1082,8 +1122,7 @@ const AuctionBidding = () => {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Phone Number
-                    <span className="text-gray-400 text-sm font-normal ml-1">(optional)</span>
+                    Phone Number *
                   </label>
                   <div className="relative">
                     <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
@@ -1109,6 +1148,7 @@ const AuctionBidding = () => {
                       disabled={submittingBid || isProcessing}
                       maxLength={20}
                       autoComplete="tel"
+                      required
                     />
                   </div>
                   {formErrors.bidderPhone ? (
@@ -1331,6 +1371,24 @@ const AuctionBidding = () => {
                         ))}
                       </div>
                     )}
+                  </div>
+
+                  {/* Logout Section */}
+                  <div className="bg-white border border-gray-200 rounded-lg p-4">
+                    <h4 className="text-lg font-semibold text-gray-900 mb-3">Account</h4>
+                    <div className="text-center">
+                      <p className="text-sm text-gray-600 mb-4">
+                        Logged in as <span className="font-medium">{currentBidder.bidder_name}</span>
+                      </p>
+                      <button
+                        type="button"
+                        onClick={clearBidderSession}
+                        className="w-full bg-gray-100 text-gray-700 py-2 px-4 rounded-lg border border-gray-300 hover:bg-gray-200 transition-colors flex items-center justify-center space-x-2"
+                      >
+                        <User className="h-4 w-4" />
+                        <span>Log Out</span>
+                      </button>
+                    </div>
                   </div>
 
                 </div>
