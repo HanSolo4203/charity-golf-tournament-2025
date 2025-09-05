@@ -74,11 +74,11 @@ const AuctionBidding = () => {
   const [returningPhone, setReturningPhone] = useState('');
 
   // Constants
-  const MIN_BID_INCREMENT = 50;
+  const MIN_BID_INCREMENT = 100000; // 100K MWK minimum increment
   const BID_ANIMATION_DURATION = 1000;
   const RATE_LIMIT_WINDOW = 60000; // 1 minute
   const MAX_SUBMISSIONS_PER_WINDOW = 3;
-  const MAX_BID_AMOUNT = 1000000; // $1M max bid
+  const MAX_BID_AMOUNT = 10000000; // 10M MWK max bid
   const MIN_BID_AMOUNT = 1;
 
   // Check if user is the highest bidder or has been outbid
@@ -372,15 +372,15 @@ const AuctionBidding = () => {
       errors.bidderEmail = 'Email address is required';
     } else if (!validateEmail(sanitizedEmail)) {
       errors.bidderEmail = 'Please enter a valid email address (e.g., john@example.com)';
-    } else if (sanitizedEmail.length > 254) {
-      errors.bidderEmail = 'Email address is too long';
+      } else if (sanitizedEmail.length > 254) {
+        errors.bidderEmail = 'Email address is too long';
     }
     
     // Validate phone (required)
     if (!sanitizedPhone) {
       errors.bidderPhone = 'Phone number is required';
     } else if (!validatePhone(sanitizedPhone)) {
-      errors.bidderPhone = 'Please enter a valid phone number (10-15 digits)';
+        errors.bidderPhone = 'Please enter a valid phone number (10-15 digits)';
     }
     
     // Check for duplicate bids (client-side check)
@@ -905,8 +905,8 @@ const AuctionBidding = () => {
                     </>
                   ) : (
                     <>
-                      <Gavel className="h-5 w-5" />
-                      <span className="font-medium">Live Auction</span>
+                  <Gavel className="h-5 w-5" />
+                  <span className="font-medium">Live Auction</span>
                     </>
                   )}
                 </div>
@@ -966,28 +966,28 @@ const AuctionBidding = () => {
                   </div>
                 ) : (
                   <>
-                    <div className="flex items-center justify-center space-x-2 mb-2">
-                      <Clock className="h-5 w-5 text-emerald-600" />
-                      <span className="font-medium text-gray-900">Auction Ends In:</span>
-                    </div>
-                    <div className="flex justify-center space-x-4">
-                      <div className="text-center">
-                        <div className="text-2xl font-bold text-emerald-600">{timeLeft.days}</div>
-                        <div className="text-xs text-gray-500">Days</div>
-                      </div>
-                      <div className="text-center">
-                        <div className="text-2xl font-bold text-emerald-600">{timeLeft.hours}</div>
-                        <div className="text-xs text-gray-500">Hours</div>
-                      </div>
-                      <div className="text-center">
-                        <div className="text-2xl font-bold text-emerald-600">{timeLeft.minutes}</div>
-                        <div className="text-xs text-gray-500">Minutes</div>
-                      </div>
-                      <div className="text-center">
-                        <div className="text-2xl font-bold text-emerald-600">{timeLeft.seconds}</div>
-                        <div className="text-xs text-gray-500">Seconds</div>
-                      </div>
-                    </div>
+                <div className="flex items-center justify-center space-x-2 mb-2">
+                  <Clock className="h-5 w-5 text-emerald-600" />
+                  <span className="font-medium text-gray-900">Auction Ends In:</span>
+                </div>
+                <div className="flex justify-center space-x-4">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-emerald-600">{timeLeft.days}</div>
+                    <div className="text-xs text-gray-500">Days</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-emerald-600">{timeLeft.hours}</div>
+                    <div className="text-xs text-gray-500">Hours</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-emerald-600">{timeLeft.minutes}</div>
+                    <div className="text-xs text-gray-500">Minutes</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-emerald-600">{timeLeft.seconds}</div>
+                    <div className="text-xs text-gray-500">Seconds</div>
+                  </div>
+                </div>
                   </>
                 )}
               </div>
@@ -1521,14 +1521,14 @@ const AuctionBidding = () => {
                       <p className="text-sm text-gray-600 mb-4">
                         Logged in as <span className="font-medium">{currentBidder.bidder_name}</span>
                       </p>
-                      <button
-                        type="button"
+                        <button
+                          type="button"
                         onClick={clearBidderSession}
                         className="w-full bg-gray-100 text-gray-700 py-2 px-4 rounded-lg border border-gray-300 hover:bg-gray-200 transition-colors flex items-center justify-center space-x-2"
-                      >
+                        >
                         <User className="h-4 w-4" />
                         <span>Log Out</span>
-                      </button>
+                        </button>
                     </div>
                   </div>
 
